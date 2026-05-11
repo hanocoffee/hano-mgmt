@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="hano mgmt" />
+  <title>hano mgmt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Serif+JP:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: #f5f0e8;
+      font-family: 'Noto Serif JP', serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* Header */
+    .header {
+      background: #1a1a18;
+      color: #f5f0e8;
+      padding: 22px 20px 16px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-sub { font-size: 10px; opacity: 0.4; letter-spacing: 0.3em; margin-bottom: 4px; }
+    .header-title { font-size: 18px; font-weight: 700; letter-spacing: 0.1em; }
+    .header-date { font-size: 11px; opacity: 0.35; margin-top: 4px; font-family: 'Noto Sans JP', sans-serif; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: #1a1a18;
+      border-top: 1px solid #333;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 4px 8px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.15s;
+    }
+    .tab-btn.active { border-bottom-color: #c8a86b; }
+    .tab-icon { font-size: 16px; }
+    .tab-label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: #666;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+    .tab-btn.active .tab-label { color: #c8a86b; }
+
+    /* Progress */
+    .progress-wrap { padding: 14px 20px 0; }
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 6px;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+    .progress-meta .done { color: #5a8a5a; font-weight: 700; }
+    .progress-bar-bg { height: 3px; background: #e0d8cc; border-radius: 2px; }
+    .progress-bar { height: 100%; border-radius: 2px; transition: width 0.35s ease; background: #c8a86b; }
+    .progress-bar.complete { background: #5a8a5a; }
+
+    /* Content */
+    .content { flex: 1; padding: 20px 16px 80px; overflow-y: auto; }
+
+    /* Section */
+    .section { margin-bottom: 28px; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .section-bar { width: 3px; height: 16px; border-radius: 2px; flex-shrink: 0; }
+    .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #3a3a38; }
+    .section-count { font-size: 11px; margin-left: auto; letter-spacing: 0.05em; font-family: 'Noto Sans JP', sans-serif; }
+    .items { display: flex; flex-direction: column; gap: 8px; }
+
+    /* Item */
+    .item-btn {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: #fff;
+      border: 1.5px solid #ece6dc;
+      border-radius: 6px;
+      padding: 12px 14px;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      transition: all 0.18s ease;
+    }
+    .item-btn.checked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .checkbox {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      border: 2px solid #c8bfb0;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+      transition: all 0.18s ease;
+    }
+    .item-btn.checked .checkbox {
+      border-color: var(--accent);
+      background: var(--accent);
+    }
+    .check-svg { display: none; }
+    .item-btn.checked .check-svg { display: block; }
+    .item-text {
+      font-size: 14px;
+      color: #2a2a28;
+      line-height: 1.5;
+      font-family: 'Noto Sans JP', sans-serif;
+      letter-spacing: 0.02em;
+      transition: all 0.18s ease;
+    }
+    .item-btn.checked .item-text {
+      color: #aaa;
+      text-decoration: line-through;
+      text-decoration-color: #bbb;
+    }
+
+    /* Reset */
+    .reset-wrap { text-align: center; margin-top: 16px; }
+    .reset-btn {
+      background: none;
+      border: 1.5px solid #d0c8bc;
+      color: #aaa;
+      padding: 9px 28px;
+      border-radius: 2px;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const TABS = [
+  { id: "ops",   label: "営業", icon: "☕" },
+  { id: "stamp", label: "作業", icon: "🔖" },
+  { id: "stock", label: "在庫", icon: "📦" },
+  { id: "clean", label: "清掃", icon: "🧹" },
+  { id: "maint", label: "整備", icon: "🔧" },
+];
+
+const TAB_DATA = {
+  ops: [
+    { id: "pre", label: "営業前", color: "#7a9e87", items: [
+      { id: "o1",  text: "漂白付けダスターを取り出す" },
+      { id: "o2",  text: "薬浸けのポルタフィルター・エスプレッソフィルターを取り出す" },
+      { id: "o3",  text: "浄水を1分間流してカルキ臭を取る" },
+      { id: "o4",  text: "エスプレッソマシンに水を入れる" },
+      { id: "o5",  text: "ケトルに水を入れて沸かす" },
+      { id: "o6",  text: "ケーキカット" },
+      { id: "o7",  text: "焼き菓子を作る" },
+      { id: "o8",  text: "リンサーの止水を開ける" },
+      { id: "o9",  text: "植物に水やり" },
+      { id: "o10", text: "床を掃除機で掃除" },
+    ]},
+    { id: "pre30", label: "開店30分前（10:30）", color: "#c8a86b", items: [
+      { id: "o11", text: "冷蔵ショーケースの電源を入れる" },
+      { id: "o12", text: "エスプレッソマシンの電源を入れる" },
+    ]},
+    { id: "during", label: "営業中", color: "#7a8aaa", items: [
+      { id: "o23", text: "ケーキの在庫チェック" },
+      { id: "o24", text: "14:00 エスプレッソマシンの水補充" },
+      { id: "o25", text: "タカナシ発注（水曜・日曜のみ）" },
+    ]},
+    { id: "post", label: "営業後", color: "#9a7a8a", items: [
+      { id: "o13", text: "自動ドアの電源を切る" },
+      { id: "o14", text: "ロールカーテンを閉める" },
+      { id: "o15", text: "コーヒー豆を補充する" },
+      { id: "o16", text: "ドリップ用の豆を補充する" },
+      { id: "o17", text: "テイクアウトカップ・ケーキプラカップ・おしぼりを補充する" },
+      { id: "o18", text: "エスプレッソマシンのクリーニング" },
+      { id: "o19", text: "リンサーの清掃" },
+      { id: "o20", text: "使用した器具類を下げる" },
+      { id: "o21", text: "ショーケースの電源を切る・ケーキをコールドテーブルに戻す" },
+      { id: "o22", text: "レジ金を確認して取り出す" },
+    ]},
+  ],
+  stamp: [
+    { id: "stamp", label: "スタンプ", color: "#8b7355", items: [
+      { id: "s1", text: "クッキー袋" },
+      { id: "s2", text: "ショッパー" },
+      { id: "s3", text: "テイクアウトカップ" },
+      { id: "s4", text: "オンライン用ボックス" },
+    ]},
+    { id: "sticker", label: "シール貼り", color: "#5a7a5a", items: [
+      { id: "st1", text: "ケーキプラカップ" },
+      { id: "st2", text: "フィナンシェ袋" },
+    ]},
+  ],
+  stock: [
+    { id: "beans", label: "コーヒー豆", color: "#6b4f3a", items: [
+      { id: "sk1", text: "生豆（各品種）" },
+      { id: "sk2", text: "焙煎済み豆（販売用）" },
+      { id: "sk3", text: "ドリップバッグ用豆" },
+      { id: "sk4", text: "エスプレッソ用豆" },
+    ]},
+    { id: "packaging", label: "包材・袋", color: "#7a6a8a", items: [
+      { id: "sk5",  text: "豆販売用スタンド袋（黒マットAL）" },
+      { id: "sk6",  text: "クッキー袋" },
+      { id: "sk7",  text: "フィナンシェ袋" },
+      { id: "sk8",  text: "ショッパー" },
+      { id: "sk9",  text: "オンライン用ボックス" },
+      { id: "sk10", text: "ドリップバッグ個包装（ニコノス）" },
+    ]},
+    { id: "cups", label: "カップ・容器", color: "#7a8a6a", items: [
+      { id: "sk11", text: "テイクアウトカップ" },
+      { id: "sk12", text: "ケーキプラカップ" },
+      { id: "sk13", text: "カップ蓋" },
+      { id: "sk14", text: "おしぼり" },
+    ]},
+    { id: "baking", label: "製菓食材", color: "#8a7a5a", items: [
+      { id: "sk15", text: "クリームチーズ" },
+      { id: "sk16", text: "生クリーム" },
+      { id: "sk17", text: "卵" },
+      { id: "sk18", text: "グラニュー糖" },
+      { id: "sk19", text: "薄力粉" },
+      { id: "sk20", text: "バター" },
+    ]},
+    { id: "consumables", label: "消耗品・その他", color: "#6a7a8a", items: [
+      { id: "sk21", text: "フィルターペーパー" },
+      { id: "sk22", text: "ストロー" },
+      { id: "sk23", text: "シール・ラベル用紙" },
+      { id: "sk24", text: "漂白剤" },
+      { id: "sk25", text: "洗剤類" },
+    ]},
+  ],
+  clean: [
+    { id: "daily", label: "毎日", color: "#5a8a7a", items: [
+      { id: "c1", text: "エスプレッソマシン（外装・トレー）" },
+      { id: "c2", text: "エスプレッソ用グラインダー（外装）" },
+      { id: "c3", text: "フィルター用グラインダー（外装）" },
+      { id: "c4", text: "リンサー清掃" },
+      { id: "c5", text: "床掃き（掃除機）" },
+      { id: "c6", text: "テーブル拭き" },
+    ]},
+    { id: "weekly", label: "毎週", color: "#7a7a5a", items: [
+      { id: "c7",  text: "床磨き" },
+      { id: "c8",  text: "テーブル・椅子の脚拭き" },
+      { id: "c9",  text: "入口ガラス掃除" },
+      { id: "c10", text: "冷蔵ショーケース内部清掃" },
+      { id: "c11", text: "コールドテーブル①清掃" },
+      { id: "c12", text: "コールドテーブル②清掃" },
+      { id: "c13", text: "グリストラップ清掃" },
+    ]},
+    { id: "monthly", label: "月1", color: "#8a5a5a", items: [
+      { id: "c14", text: "製氷機（IM-25P）内部洗浄" },
+      { id: "c15", text: "冷蔵ショーケース背面・コイル清掃" },
+      { id: "c16", text: "エスプレッソマシン内部洗浄（バックフラッシュ）" },
+    ]},
+  ],
+  maint: [
+    { id: "weekly_m", label: "毎週", color: "#6a5a8a", items: [
+      { id: "m1", text: "焙煎機 クーリングファン清掃" },
+      { id: "m2", text: "ばいせん君（C-BOX1TB）フィルター清掃" },
+    ]},
+    { id: "monthly_m", label: "月1", color: "#5a6a8a", items: [
+      { id: "m3", text: "焙煎機 グリスアップ" },
+      { id: "m4", text: "エスプレッソ用グラインダー 刃・内部点検" },
+      { id: "m5", text: "フィルター用グラインダー 刃・内部点検" },
+    ]},
+  ],
+};
+
+// ── State ──────────────────────────────────────────
+let activeTab = "ops";
+let done = {};
+
+function getAllItems(tabId) {
+  return TAB_DATA[tabId].flatMap(s => s.items);
+}
+
+function getDoneCount(tabId) {
+  return getAllItems(tabId).filter(i => done[i.id]).length;
+}
+
+// ── Render ─────────────────────────────────────────
+function render() {
+  const sections = TAB_DATA[activeTab];
+  const allItems = getAllItems(activeTab);
+  const doneCount = allItems.filter(i => done[i.id]).length;
+  const total = allItems.length;
+  const allDone = doneCount === total && total > 0;
+
+  const dateStr = new Date().toLocaleDateString("ja-JP", {
+    month: "long", day: "numeric", weekday: "short"
+  });
+
+  document.getElementById("app").innerHTML = `
+    <div class="header">
+      <div class="header-sub">HANO COFFEE</div>
+      <div class="header-title">作業管理</div>
+      <div class="header-date">${dateStr}</div>
+    </div>
+
+    <div class="tabs">
+      ${TABS.map(t => `
+        <button class="tab-btn ${t.id === activeTab ? "active" : ""}" onclick="switchTab('${t.id}')">
+          <span class="tab-icon">${t.icon}</span>
+          <span class="tab-label">${t.label}</span>
+        </button>
+      `).join("")}
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-meta">
+        <span>進捗</span>
+        <span class="${allDone ? "done" : ""}">${doneCount} / ${total}${allDone ? "　✓ 完了" : ""}</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar ${allDone ? "complete" : ""}" style="width: ${total ? (doneCount / total) * 100 : 0}%"></div>
+      </div>
+    </div>
+
+    <div class="content">
+      ${sections.map(section => `
+        <div class="section">
+          <div class="section-header">
+            <div class="section-bar" style="background: ${section.color}"></div>
+            <span class="section-label">${section.label}</span>
+            <span class="section-count" style="color: ${section.color}">
+              ${section.items.filter(i => done[i.id]).length}/${section.items.length}
+            </span>
+          </div>
+          <div class="items">
+            ${section.items.map(item => `
+              <button
+                class="item-btn ${done[item.id] ? "checked" : ""}"
+                style="--accent: ${section.color}"
+                onclick="toggleItem('${item.id}')"
+              >
+                <div class="checkbox">
+                  <svg class="check-svg" width="11" height="8" viewBox="0 0 11 8" fill="none">
+                    <path d="M1 3.5L4 6.5L10 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <span class="item-text">${item.text}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      `).join("")}
+
+      <div class="reset-wrap">
+        <button class="reset-btn" onclick="resetTab()">リセット</button>
+      </div>
+    </div>
+  `;
+}
+
+function switchTab(tabId) {
+  activeTab = tabId;
+  render();
+}
+
+function toggleItem(id) {
+  done[id] = !done[id];
+  render();
+}
+
+function resetTab() {
+  getAllItems(activeTab).forEach(i => delete done[i.id]);
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
