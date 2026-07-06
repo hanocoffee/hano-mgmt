@@ -167,6 +167,7 @@ const TABS = [
   { id: "stock", label: "在庫", icon: "📦" },
   { id: "clean", label: "清掃", icon: "🧹" },
   { id: "maint", label: "整備", icon: "🔧" },
+  { id: "sns",   label: "SNS", icon: "📱" },
 ];
 
 const TAB_DATA = {
@@ -299,6 +300,25 @@ const TAB_DATA = {
       { id: "m3", text: "焙煎機 グリスアップ" },
       { id: "m4", text: "エスプレッソ用グラインダー 刃・内部点検" },
       { id: "m5", text: "フィルター用グラインダー 刃・内部点検" },
+    ]},
+  ],
+  sns: [
+    { id: "sns_daily", label: "毎日", color: "#a86b7a", items: [
+      { id: "n1", text: "ストーリーズ投稿（営業案内・本日のケーキ）" },
+      { id: "n2", text: "コメント・DMの確認と返信" },
+      { id: "n3", text: "メンション・タグ付け投稿のリポスト" },
+    ]},
+    { id: "sns_weekly", label: "毎週", color: "#7a6ba8", items: [
+      { id: "n4", text: "フィード投稿（新豆・焼き菓子・店内風景）" },
+      { id: "n5", text: "投稿用の写真撮影" },
+      { id: "n6", text: "リール動画の作成・投稿" },
+      { id: "n7", text: "来週の投稿ネタ出し・下書き作成" },
+    ]},
+    { id: "sns_monthly", label: "月1", color: "#6b8aa8", items: [
+      { id: "n8",  text: "インサイト確認（フォロワー数・リーチ・保存数）" },
+      { id: "n9",  text: "反応の良かった投稿の振り返り" },
+      { id: "n10", text: "翌月の投稿計画を立てる" },
+      { id: "n11", text: "プロフィール・ハイライトの見直し" },
     ]},
   ],
 };
