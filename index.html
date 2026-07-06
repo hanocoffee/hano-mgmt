@@ -142,6 +142,88 @@
       text-decoration-color: #bbb;
     }
 
+    /* SNS運用 */
+    .subnav { display: flex; gap: 6px; padding: 14px 16px 0; }
+    .subnav-btn {
+      flex: 1;
+      padding: 9px 0;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      font-family: 'Noto Sans JP', sans-serif;
+      background: #fff;
+      border: 1.5px solid #ece6dc;
+      border-radius: 6px;
+      color: #8a8478;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .subnav-btn.active { background: #1a1a18; color: #e8dcc0; border-color: #1a1a18; }
+    .subnav-count { opacity: 0.55; font-size: 10px; }
+    .card {
+      background: #fff;
+      border: 1.5px solid #ece6dc;
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .card-title { font-size: 14px; font-weight: 700; color: #2a2a28; font-family: 'Noto Sans JP', sans-serif; line-height: 1.5; }
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 9px;
+      border-radius: 10px;
+      background: #f0e9dd;
+      color: #8a7a5a;
+      font-family: 'Noto Sans JP', sans-serif;
+      margin-bottom: 6px;
+    }
+    .card-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .sbtn {
+      padding: 8px 12px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1.5px solid #d0c8bc;
+      background: none;
+      color: #6a655c;
+      cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
+      letter-spacing: 0.05em;
+    }
+    .sbtn.primary { background: #1a1a18; color: #e8dcc0; border-color: #1a1a18; }
+    .sbtn.danger { color: #a86b6b; border-color: #ddc8c8; }
+    .field-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    input[type=text], input[type=number], input[type=date], select, textarea {
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 13px;
+      border: 1.5px solid #d8d0c4;
+      border-radius: 4px;
+      padding: 9px 10px;
+      background: #fdfbf7;
+      color: #2a2a28;
+      width: 100%;
+    }
+    textarea { min-height: 130px; line-height: 1.7; resize: vertical; margin-top: 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .chip {
+      font-size: 11px;
+      padding: 6px 11px;
+      border-radius: 14px;
+      border: 1px solid #d8cbb2;
+      background: #faf6ee;
+      color: #8a7a5a;
+      cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
+    }
+    .view-title { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #3a3a38; margin-bottom: 10px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+    .stat { background: #1a1a18; border-radius: 6px; padding: 12px 6px; text-align: center; }
+    .stat-num { font-size: 20px; color: #e8dcc0; font-weight: 700; }
+    .stat-label { font-size: 10px; color: #888; margin-top: 3px; font-family: 'Noto Sans JP', sans-serif; }
+    .best-card { font-size: 12px; font-family: 'Noto Sans JP', sans-serif; color: #8a7a5a; line-height: 1.6; }
+    .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+    .metric-label { font-size: 10px; color: #999; font-family: 'Noto Sans JP', sans-serif; margin-bottom: 3px; display: block; }
+    .empty-note { text-align: center; color: #b0a894; font-size: 12px; padding: 34px 0; font-family: 'Noto Sans JP', sans-serif; line-height: 1.9; }
+
     /* Reset */
     .reset-wrap { text-align: center; margin-top: 16px; }
     .reset-btn {
@@ -331,23 +413,304 @@ function getAllItems(tabId) {
   return TAB_DATA[tabId].flatMap(s => s.items);
 }
 
-function getDoneCount(tabId) {
-  return getAllItems(tabId).filter(i => done[i.id]).length;
+// ── SNS運用 ────────────────────────────────────────
+const SNS_KEY = "hano_sns_v1";
+const SNS_CATS = ["新豆", "ケーキ・焼き菓子", "店内・日常", "豆知識", "季節", "お知らせ"];
+const IDEA_HINTS = [
+  "焙煎の様子（音・煙）",
+  "豆の産地ストーリー",
+  "おいしい淹れ方のコツ",
+  "豆の保存方法Q&A",
+  "本日のケーキ紹介",
+  "焼き菓子の焼き上がり",
+  "店内の好きな席",
+  "スタッフの今週の一杯",
+  "季節のおすすめドリンク",
+  "営業時間のお知らせ",
+];
+const SNS_VIEWS = [
+  { id: "ideas",     label: "ネタ帳" },
+  { id: "drafts",    label: "下書き" },
+  { id: "analytics", label: "分析" },
+  { id: "routine",   label: "ルーティン" },
+];
+let snsView = "ideas";
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function seedSns() {
+  return {
+    hashtags: "#コーヒー #自家焙煎 #スペシャルティコーヒー #コーヒーのある暮らし #カフェ巡り #チーズケーキ #焼き菓子",
+    items: [
+      { id: "seed-d1", title: "新豆入荷の紹介（産地・精製・味わい）", cat: "新豆", status: "draft", createdAt: Date.now(),
+        caption: "【新豆入荷】\nエチオピア イルガチェフェ（ウォッシュド）が入荷しました。\n\n紅茶のような華やかな香りと、やわらかな酸味。浅めに焙煎して、すっきりとした甘さに仕上げています。\n\n豆・ドリップバッグどちらも店頭にご用意しています。お好みをお聞かせいただければ、ぴったりの一杯をご提案します。\n\n※サンプル文です。実際の豆に合わせて書き換えてください" },
+      { id: "seed-d2", title: "本日のケーキ（ベイクドチーズケーキ）", cat: "ケーキ・焼き菓子", status: "draft", createdAt: Date.now(),
+        caption: "【本日のケーキ】\nベイクドチーズケーキ、11時から並びます。\n\nクリームチーズをたっぷり使って、しっかり焼き込んだ濃厚な味わい。深煎りのコーヒーとの相性がおすすめです。\n\nお持ち帰り用カップのご用意もあります。売り切れ次第終了です。\n\n※サンプル文です。内容に合わせて書き換えてください" },
+      { id: "seed-i1", title: "焙煎の様子をリールで（煙・音・ハゼ）", cat: "店内・日常", status: "idea", caption: "", createdAt: Date.now() },
+      { id: "seed-i2", title: "ドリップバッグのおいしい淹れ方", cat: "豆知識", status: "idea", caption: "", createdAt: Date.now() },
+      { id: "seed-i3", title: "コーヒー豆の保存方法Q&A", cat: "豆知識", status: "idea", caption: "", createdAt: Date.now() },
+      { id: "seed-i4", title: "フィナンシェの焼き上がり（断面）", cat: "ケーキ・焼き菓子", status: "idea", caption: "", createdAt: Date.now() },
+      { id: "seed-i5", title: "店内の席紹介・過ごし方", cat: "店内・日常", status: "idea", caption: "", createdAt: Date.now() },
+      { id: "seed-i6", title: "夏におすすめのアイスコーヒー", cat: "季節", status: "idea", caption: "", createdAt: Date.now() },
+    ],
+  };
+}
+
+function loadSns() {
+  try {
+    const raw = localStorage.getItem(SNS_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && Array.isArray(d.items)) return d;
+    }
+  } catch (e) {}
+  return seedSns();
+}
+let sns = loadSns();
+function saveSns() {
+  try { localStorage.setItem(SNS_KEY, JSON.stringify(sns)); } catch (e) {}
+}
+
+function numOrNull(v) {
+  const n = parseInt(v, 10);
+  return isNaN(n) ? null : n;
+}
+
+// 画面上の入力値をデータに取り込む（再描画で消えないように）
+function syncSnsInputs() {
+  sns.items.forEach(it => {
+    const cap = document.getElementById("cap-" + it.id);
+    if (cap) it.caption = cap.value;
+    const lk = document.getElementById("lk-" + it.id);
+    if (lk) {
+      it.metrics = {
+        likes: numOrNull(lk.value),
+        saves: numOrNull(document.getElementById("sv-" + it.id).value),
+        reach: numOrNull(document.getElementById("rc-" + it.id).value),
+      };
+    }
+    const dt = document.getElementById("dt-" + it.id);
+    if (dt && dt.value) it.postedAt = dt.value;
+  });
+  const tp = document.getElementById("tag-preset");
+  if (tp) sns.hashtags = tp.value;
+}
+
+function snsAutoSave() { syncSnsInputs(); saveSns(); }
+
+function switchSnsView(v) {
+  snsAutoSave();
+  snsView = v;
+  render();
+}
+
+function addIdea() {
+  const input = document.getElementById("idea-title");
+  const title = input.value.trim();
+  if (!title) return;
+  const cat = document.getElementById("idea-cat").value;
+  sns.items.unshift({ id: uid(), title, cat, status: "idea", caption: "", createdAt: Date.now() });
+  saveSns();
+  render();
+}
+
+function useHint(i) {
+  document.getElementById("idea-title").value = IDEA_HINTS[i];
+}
+
+function setStatus(id, status) {
+  syncSnsInputs();
+  const it = sns.items.find(x => x.id === id);
+  if (!it) return;
+  it.status = status;
+  if (status === "posted" && !it.postedAt) it.postedAt = todayStr();
+  saveSns();
+  render();
+}
+
+function delItem(id) {
+  if (!confirm("この投稿を削除しますか？")) return;
+  syncSnsInputs();
+  sns.items = sns.items.filter(x => x.id !== id);
+  saveSns();
+  render();
+}
+
+function addTags(id) {
+  syncSnsInputs();
+  const el = document.getElementById("cap-" + id);
+  const tags = (sns.hashtags || "").trim();
+  if (!tags || el.value.includes(tags)) return;
+  el.value = el.value.replace(/\s+$/, "") + "\n\n" + tags;
+  snsAutoSave();
+}
+
+function copyCaption(id, btn) {
+  const el = document.getElementById("cap-" + id);
+  const val = el.value;
+  const feedback = () => {
+    const t = btn.textContent;
+    btn.textContent = "コピーしました ✓";
+    setTimeout(() => { btn.textContent = t; }, 1400);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(feedback).catch(() => { el.select(); document.execCommand("copy"); feedback(); });
+  } else {
+    el.select();
+    document.execCommand("copy");
+    feedback();
+  }
+}
+
+function saveSnsNow(btn) {
+  snsAutoSave();
+  const t = btn.textContent;
+  btn.textContent = "保存しました ✓";
+  setTimeout(() => { btn.textContent = t; }, 1400);
+}
+
+function saveAndRender() {
+  snsAutoSave();
+  render();
+}
+
+// ── SNS views ──────────────────────────────────────
+function subnavHtml() {
+  const counts = {
+    ideas: sns.items.filter(i => i.status === "idea").length,
+    drafts: sns.items.filter(i => i.status === "draft").length,
+    analytics: sns.items.filter(i => i.status === "posted").length,
+  };
+  return `
+    <div class="subnav">
+      ${SNS_VIEWS.map(v => `
+        <button class="subnav-btn ${v.id === snsView ? "active" : ""}" onclick="switchSnsView('${v.id}')">
+          ${v.label}${counts[v.id] != null ? ` <span class="subnav-count">${counts[v.id]}</span>` : ""}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function ideasHtml() {
+  const ideas = sns.items.filter(i => i.status === "idea");
+  return `
+    <div class="card">
+      <div class="view-title">ネタを追加</div>
+      <div class="field-row">
+        <input type="text" id="idea-title" placeholder="投稿のネタ・アイデアを入力" />
+      </div>
+      <div class="field-row" style="margin-bottom:0">
+        <select id="idea-cat">${SNS_CATS.map(c => `<option>${c}</option>`).join("")}</select>
+        <button class="sbtn primary" style="flex-shrink:0" onclick="addIdea()">追加する</button>
+      </div>
+      <div class="chips">
+        ${IDEA_HINTS.map((h, i) => `<button class="chip" onclick="useHint(${i})">${h}</button>`).join("")}
+      </div>
+    </div>
+    ${ideas.length ? ideas.map(it => `
+      <div class="card">
+        <span class="badge">${esc(it.cat)}</span>
+        <div class="card-title">${esc(it.title)}</div>
+        <div class="card-actions">
+          <button class="sbtn primary" onclick="setStatus('${it.id}','draft')">下書きを書く →</button>
+          <button class="sbtn danger" onclick="delItem('${it.id}')">削除</button>
+        </div>
+      </div>
+    `).join("") : `<div class="empty-note">ネタがありません。<br>上のヒントをタップするか、自由に追加してください。</div>`}
+  `;
+}
+
+function draftsHtml() {
+  const drafts = sns.items.filter(i => i.status === "draft");
+  return `
+    ${drafts.length ? drafts.map(it => `
+      <div class="card">
+        <span class="badge">${esc(it.cat)}</span>
+        <div class="card-title">${esc(it.title)}</div>
+        <textarea id="cap-${it.id}" placeholder="投稿文をここに書く…" onchange="snsAutoSave()">${esc(it.caption)}</textarea>
+        <div class="card-actions">
+          <button class="sbtn" onclick="addTags('${it.id}')"># タグ追加</button>
+          <button class="sbtn" onclick="copyCaption('${it.id}', this)">コピー</button>
+          <button class="sbtn primary" onclick="setStatus('${it.id}','posted')">投稿済みにする ✓</button>
+          <button class="sbtn" onclick="setStatus('${it.id}','idea')">ネタに戻す</button>
+          <button class="sbtn danger" onclick="delItem('${it.id}')">削除</button>
+        </div>
+      </div>
+    `).join("") : `<div class="empty-note">下書きがありません。<br>ネタ帳から「下書きを書く」を押すとここに表示されます。</div>`}
+    <div class="card">
+      <div class="view-title">ハッシュタグセット（タグ追加ボタンで挿入）</div>
+      <textarea id="tag-preset" style="min-height:70px; margin-top:0" onchange="snsAutoSave()">${esc(sns.hashtags)}</textarea>
+      <div class="card-actions">
+        <button class="sbtn" onclick="saveSnsNow(this)">保存</button>
+      </div>
+    </div>
+  `;
+}
+
+function analyticsHtml() {
+  const posted = sns.items.filter(i => i.status === "posted")
+    .slice().sort((a, b) => (b.postedAt || "").localeCompare(a.postedAt || ""));
+  const month = todayStr().slice(0, 7);
+  const monthCount = posted.filter(p => (p.postedAt || "").startsWith(month)).length;
+  const avg = arr => arr.length ? Math.round(arr.reduce((s, x) => s + x, 0) / arr.length) : "−";
+  const withLikes = posted.filter(p => p.metrics && p.metrics.likes != null);
+  const withSaves = posted.filter(p => p.metrics && p.metrics.saves != null);
+  const avgLikes = avg(withLikes.map(p => p.metrics.likes));
+  const avgSaves = avg(withSaves.map(p => p.metrics.saves));
+  const best = withLikes.slice().sort((a, b) => b.metrics.likes - a.metrics.likes)[0];
+  return `
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-num">${monthCount}</div><div class="stat-label">今月の投稿</div></div>
+      <div class="stat"><div class="stat-num">${avgLikes}</div><div class="stat-label">平均いいね</div></div>
+      <div class="stat"><div class="stat-num">${avgSaves}</div><div class="stat-label">平均保存</div></div>
+    </div>
+    ${best ? `<div class="card best-card">🏆 ベスト投稿：${esc(best.title)}（いいね ${best.metrics.likes}）<br><span style="font-size:11px; color:#b0a894">反応が良かった系統のネタを増やしてみましょう</span></div>` : ""}
+    ${posted.length ? posted.map(it => `
+      <div class="card">
+        <span class="badge">${esc(it.cat)}</span>
+        <div class="card-title">${esc(it.title)}</div>
+        <div class="field-row" style="margin-top:8px; margin-bottom:0">
+          <div style="width:100%">
+            <label class="metric-label">投稿日</label>
+            <input type="date" id="dt-${it.id}" value="${esc(it.postedAt || "")}" onchange="snsAutoSave()" />
+          </div>
+        </div>
+        <div class="metric-row">
+          <div><label class="metric-label">いいね</label><input type="number" id="lk-${it.id}" min="0" value="${it.metrics && it.metrics.likes != null ? it.metrics.likes : ""}" onchange="snsAutoSave()" /></div>
+          <div><label class="metric-label">保存</label><input type="number" id="sv-${it.id}" min="0" value="${it.metrics && it.metrics.saves != null ? it.metrics.saves : ""}" onchange="snsAutoSave()" /></div>
+          <div><label class="metric-label">リーチ</label><input type="number" id="rc-${it.id}" min="0" value="${it.metrics && it.metrics.reach != null ? it.metrics.reach : ""}" onchange="snsAutoSave()" /></div>
+        </div>
+        <div class="card-actions">
+          <button class="sbtn primary" onclick="saveAndRender()">数値を保存</button>
+          <button class="sbtn" onclick="setStatus('${it.id}','draft')">下書きに戻す</button>
+          <button class="sbtn danger" onclick="delItem('${it.id}')">削除</button>
+        </div>
+      </div>
+    `).join("") : `<div class="empty-note">まだ投稿の記録がありません。<br>下書きを「投稿済みにする」とここに表示され、<br>いいね・保存・リーチを記録できます。</div>`}
+  `;
+}
+
+function snsViewHtml() {
+  if (snsView === "ideas") return ideasHtml();
+  if (snsView === "drafts") return draftsHtml();
+  if (snsView === "analytics") return analyticsHtml();
+  return checklistHtml("sns");
 }
 
 // ── Render ─────────────────────────────────────────
-function render() {
-  const sections = TAB_DATA[activeTab];
-  const allItems = getAllItems(activeTab);
-  const doneCount = allItems.filter(i => done[i.id]).length;
-  const total = allItems.length;
-  const allDone = doneCount === total && total > 0;
-
+function chromeHtml() {
   const dateStr = new Date().toLocaleDateString("ja-JP", {
     month: "long", day: "numeric", weekday: "short"
   });
-
-  document.getElementById("app").innerHTML = `
+  return `
     <div class="header">
       <div class="header-sub">HANO COFFEE</div>
       <div class="header-title">作業管理</div>
@@ -362,7 +725,15 @@ function render() {
         </button>
       `).join("")}
     </div>
+  `;
+}
 
+function progressHtml(tabId) {
+  const allItems = getAllItems(tabId);
+  const doneCount = allItems.filter(i => done[i.id]).length;
+  const total = allItems.length;
+  const allDone = doneCount === total && total > 0;
+  return `
     <div class="progress-wrap">
       <div class="progress-meta">
         <span>進捗</span>
@@ -372,44 +743,60 @@ function render() {
         <div class="progress-bar ${allDone ? "complete" : ""}" style="width: ${total ? (doneCount / total) * 100 : 0}%"></div>
       </div>
     </div>
+  `;
+}
 
-    <div class="content">
-      ${sections.map(section => `
-        <div class="section">
-          <div class="section-header">
-            <div class="section-bar" style="background: ${section.color}"></div>
-            <span class="section-label">${section.label}</span>
-            <span class="section-count" style="color: ${section.color}">
-              ${section.items.filter(i => done[i.id]).length}/${section.items.length}
-            </span>
-          </div>
-          <div class="items">
-            ${section.items.map(item => `
-              <button
-                class="item-btn ${done[item.id] ? "checked" : ""}"
-                style="--accent: ${section.color}"
-                onclick="toggleItem('${item.id}')"
-              >
-                <div class="checkbox">
-                  <svg class="check-svg" width="11" height="8" viewBox="0 0 11 8" fill="none">
-                    <path d="M1 3.5L4 6.5L10 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </div>
-                <span class="item-text">${item.text}</span>
-              </button>
-            `).join("")}
-          </div>
+function checklistHtml(tabId) {
+  return `
+    ${TAB_DATA[tabId].map(section => `
+      <div class="section">
+        <div class="section-header">
+          <div class="section-bar" style="background: ${section.color}"></div>
+          <span class="section-label">${section.label}</span>
+          <span class="section-count" style="color: ${section.color}">
+            ${section.items.filter(i => done[i.id]).length}/${section.items.length}
+          </span>
         </div>
-      `).join("")}
-
-      <div class="reset-wrap">
-        <button class="reset-btn" onclick="resetTab()">リセット</button>
+        <div class="items">
+          ${section.items.map(item => `
+            <button
+              class="item-btn ${done[item.id] ? "checked" : ""}"
+              style="--accent: ${section.color}"
+              onclick="toggleItem('${item.id}')"
+            >
+              <div class="checkbox">
+                <svg class="check-svg" width="11" height="8" viewBox="0 0 11 8" fill="none">
+                  <path d="M1 3.5L4 6.5L10 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <span class="item-text">${item.text}</span>
+            </button>
+          `).join("")}
+        </div>
       </div>
+    `).join("")}
+
+    <div class="reset-wrap">
+      <button class="reset-btn" onclick="resetTab()">リセット</button>
+    </div>
+  `;
+}
+
+function render() {
+  const isSns = activeTab === "sns";
+  const showChecklist = !isSns || snsView === "routine";
+  document.getElementById("app").innerHTML = `
+    ${chromeHtml()}
+    ${isSns ? subnavHtml() : ""}
+    ${showChecklist ? progressHtml(activeTab) : ""}
+    <div class="content">
+      ${isSns ? snsViewHtml() : checklistHtml(activeTab)}
     </div>
   `;
 }
 
 function switchTab(tabId) {
+  if (activeTab === "sns") snsAutoSave();
   activeTab = tabId;
   render();
 }
