@@ -406,8 +406,27 @@ const TAB_DATA = {
 };
 
 // ── State ──────────────────────────────────────────
+const DONE_KEY = "hano_done_v1";
 let activeTab = "ops";
 let done = {};
+
+// チェック状態の保存・復元（営業タブは日付が変わると自動で新しい日になる。他タブはリセットまで保持）
+function loadDone() {
+  try {
+    const raw = localStorage.getItem(DONE_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (!d || typeof d.done !== "object" || d.done === null) return;
+    done = d.done;
+    if (d.opsDate !== todayStr()) {
+      TAB_DATA.ops.flatMap(s => s.items).forEach(i => delete done[i.id]);
+    }
+  } catch (e) {}
+}
+function saveDone() {
+  try { localStorage.setItem(DONE_KEY, JSON.stringify({ opsDate: todayStr(), done: done })); } catch (e) {}
+}
+loadDone();
 
 function getAllItems(tabId) {
   return TAB_DATA[tabId].flatMap(s => s.items);
@@ -777,6 +796,7 @@ function checklistHtml(tabId) {
     `).join("")}
 
     <div class="reset-wrap">
+      <button class="reset-btn" onclick="copyRecord(this)">記録をコピー</button>
       <button class="reset-btn" onclick="resetTab()">リセット</button>
     </div>
   `;
@@ -803,12 +823,60 @@ function switchTab(tabId) {
 
 function toggleItem(id) {
   done[id] = !done[id];
+  saveDone();
   render();
 }
 
 function resetTab() {
+  if (!confirm("このタブのチェックをすべて外しますか？")) return;
   getAllItems(activeTab).forEach(i => delete done[i.id]);
+  saveDone();
   render();
+}
+
+// ── 記録の書き出し ──────────────────────────────────
+function yamlq(s) {
+  return '"' + String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
+function buildRecordYaml(tabId) {
+  const tab = TABS.find(t => t.id === tabId);
+  const L = [];
+  L.push("# hano coffee チェック記録（hano mgmt）");
+  L.push("date: " + todayStr());
+  L.push("タブ: " + yamlq(tab ? tab.label : tabId));
+  TAB_DATA[tabId].forEach(section => {
+    L.push("");
+    L.push(yamlq(section.label) + ":");
+    section.items.forEach(it => {
+      L.push("  - 済: " + (done[it.id] ? "true" : "false"));
+      L.push("    項目: " + yamlq(it.text));
+    });
+  });
+  L.push("");
+  return L.join("\n");
+}
+
+function copyRecord(btn) {
+  const yaml = buildRecordYaml(activeTab);
+  const feedback = () => {
+    const t = btn.textContent;
+    btn.textContent = "コピーしました ✓";
+    setTimeout(() => { btn.textContent = t; }, 1400);
+  };
+  const fallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = yaml;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); feedback(); } catch (e) {}
+    document.body.removeChild(ta);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(yaml).then(feedback, fallback);
+  } else {
+    fallback();
+  }
 }
 
 render();
