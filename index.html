@@ -224,6 +224,34 @@
     .metric-label { font-size: 10px; color: #999; font-family: 'Noto Sans JP', sans-serif; margin-bottom: 3px; display: block; }
     .empty-note { text-align: center; color: #b0a894; font-size: 12px; padding: 34px 0; font-family: 'Noto Sans JP', sans-serif; line-height: 1.9; }
 
+    /* 期限チェック表 */
+    .exp-row {
+      background: #fff;
+      border: 1.5px solid #ece6dc;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .exp-row.warn { border-color: #d9b36a; }
+    .exp-row.over { border-color: #c88a8a; background: #fdf5f3; }
+    .exp-main { display: flex; align-items: center; gap: 8px; }
+    .exp-name { font-size: 14px; font-weight: 700; color: #2a2a28; font-family: 'Noto Sans JP', sans-serif; flex: 1; line-height: 1.5; }
+    .exp-badge {
+      font-size: 10px;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-family: 'Noto Sans JP', sans-serif;
+      flex-shrink: 0;
+      background: #eef1ea;
+      color: #5a8a5a;
+      white-space: nowrap;
+    }
+    .exp-badge.warn { background: #f7ecd6; color: #a8823a; }
+    .exp-badge.over { background: #f3dede; color: #a85a5a; }
+    .exp-actions { display: flex; gap: 6px; margin-top: 9px; align-items: center; }
+    .exp-actions input[type=date] { flex: 1; }
+    .exp-actions .sbtn { flex-shrink: 0; }
+
     /* Reset */
     .reset-wrap { text-align: center; margin-top: 16px; }
     .reset-btn {
@@ -247,6 +275,7 @@ const TABS = [
   { id: "ops",   label: "営業", icon: "☕" },
   { id: "stamp", label: "作業", icon: "🔖" },
   { id: "stock", label: "在庫", icon: "📦" },
+  { id: "exp",   label: "期限", icon: "⏳" },
   { id: "clean", label: "清掃", icon: "🧹" },
   { id: "maint", label: "整備", icon: "🔧" },
   { id: "sns",   label: "SNS", icon: "📱" },
@@ -272,6 +301,7 @@ const TAB_DATA = {
       { id: "o30", text: "皿を棚から出す（火曜夜）" },
       { id: "o31", text: "テーブル拭き" },
       { id: "o35", text: "トイレ掃除" },
+      { id: "o38", text: "iPadとお会計モニターが接続されているか確認" },
     ]},
     { id: "pre30", label: "開店30分前（10:30）", color: "#c8a86b", items: [
       { id: "o11", text: "冷蔵ショーケースの電源を入れる" },
@@ -298,6 +328,7 @@ const TAB_DATA = {
       { id: "o32", text: "エスプレッソグラインダーの豆を出す（残り少ない場合は入れたままにして翌日上から補充）" },
       { id: "o33", text: "フォーマーを薬浸けにする" },
       { id: "o34", text: "皿を棚にしまう（日曜夜）" },
+      { id: "o39", text: "賞味期限チェック（期限タブで確認）" },
     ]},
   ],
   stamp: [
@@ -430,6 +461,102 @@ loadDone();
 
 function getAllItems(tabId) {
   return TAB_DATA[tabId].flatMap(s => s.items);
+}
+
+// ── 期限チェック表 ──────────────────────────────────
+const EXP_KEY = "hano_exp_v1";
+function loadExp() {
+  try {
+    const raw = localStorage.getItem(EXP_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && Array.isArray(d.items)) return d;
+    }
+  } catch (e) {}
+  return { items: [] };
+}
+let exp = loadExp();
+function saveExp() {
+  try { localStorage.setItem(EXP_KEY, JSON.stringify(exp)); } catch (e) {}
+}
+
+function addExp() {
+  const nameEl = document.getElementById("exp-name");
+  const dateEl = document.getElementById("exp-date");
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  if (!dateEl.value) { dateEl.focus(); return; }
+  exp.items.push({ id: uid(), name: name, date: dateEl.value });
+  saveExp();
+  render();
+}
+
+function delExp(id) {
+  const it = exp.items.find(x => x.id === id);
+  if (!confirm((it ? "「" + it.name + "」" : "この行") + "を期限表から消しますか？")) return;
+  exp.items = exp.items.filter(x => x.id !== id);
+  saveExp();
+  render();
+}
+
+function updateExpDate(id, value) {
+  const it = exp.items.find(x => x.id === id);
+  if (it && value) { it.date = value; saveExp(); render(); }
+}
+
+function expDays(dateStr) {
+  return Math.round((new Date(dateStr) - new Date(todayStr())) / 86400000);
+}
+function expStatus(d) {
+  if (d < 0) return { label: (-d) + "日超過", cls: "over" };
+  if (d === 0) return { label: "今日まで", cls: "warn" };
+  if (d <= 3) return { label: "あと" + d + "日", cls: "warn" };
+  return { label: "あと" + d + "日", cls: "ok" };
+}
+
+function expHtml() {
+  const items = exp.items.slice().sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+  return `
+    <div class="card">
+      <div class="view-title">期限を登録</div>
+      <div class="field-row">
+        <input type="text" id="exp-name" placeholder="品名（例: クリームチーズ 開封）" />
+      </div>
+      <div class="field-row" style="margin-bottom:0">
+        <input type="date" id="exp-date" />
+        <button class="sbtn primary" style="flex-shrink:0" onclick="addExp()">追加する</button>
+      </div>
+    </div>
+    ${items.length ? items.map(it => {
+      const st = expStatus(expDays(it.date));
+      return `
+      <div class="exp-row ${st.cls === "ok" ? "" : st.cls}">
+        <div class="exp-main">
+          <div class="exp-name">${esc(it.name)}</div>
+          <span class="exp-badge ${st.cls === "ok" ? "" : st.cls}">${st.label}</span>
+        </div>
+        <div class="exp-actions">
+          <input type="date" value="${esc(it.date)}" onchange="updateExpDate('${it.id}', this.value)" />
+          <button class="sbtn danger" onclick="delExp('${it.id}')">使い切った・削除</button>
+        </div>
+      </div>`;
+    }).join("") : `<div class="empty-note">まだ登録がありません。<br>開封した材料・仕込み・ケーキなどの期限を登録すると、<br>近い順に並んで色で警告されます。</div>`}
+    ${items.length ? `<div class="reset-wrap"><button class="reset-btn" onclick="copyExp(this)">表をコピー</button></div>` : ""}
+  `;
+}
+
+function copyExp(btn) {
+  const items = exp.items.slice().sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+  const L = [];
+  L.push("# hano coffee 期限チェック表（hano mgmt）");
+  L.push("date: " + todayStr());
+  L.push("期限:");
+  items.forEach(it => {
+    L.push("  - 品名: " + yamlq(it.name));
+    L.push("    期限: " + it.date);
+  });
+  L.push("");
+  copyText(L.join("\n"), btn);
 }
 
 // ── SNS運用 ────────────────────────────────────────
@@ -804,13 +931,14 @@ function checklistHtml(tabId) {
 
 function render() {
   const isSns = activeTab === "sns";
-  const showChecklist = !isSns || snsView === "routine";
+  const isExp = activeTab === "exp";
+  const showChecklist = !isExp && (!isSns || snsView === "routine");
   document.getElementById("app").innerHTML = `
     ${chromeHtml()}
     ${isSns ? subnavHtml() : ""}
     ${showChecklist ? progressHtml(activeTab) : ""}
     <div class="content">
-      ${isSns ? snsViewHtml() : checklistHtml(activeTab)}
+      ${isSns ? snsViewHtml() : isExp ? expHtml() : checklistHtml(activeTab)}
     </div>
   `;
 }
@@ -857,8 +985,7 @@ function buildRecordYaml(tabId) {
   return L.join("\n");
 }
 
-function copyRecord(btn) {
-  const yaml = buildRecordYaml(activeTab);
+function copyText(text, btn) {
   const feedback = () => {
     const t = btn.textContent;
     btn.textContent = "コピーしました ✓";
@@ -866,17 +993,21 @@ function copyRecord(btn) {
   };
   const fallback = () => {
     const ta = document.createElement("textarea");
-    ta.value = yaml;
+    ta.value = text;
     document.body.appendChild(ta);
     ta.select();
     try { document.execCommand("copy"); feedback(); } catch (e) {}
     document.body.removeChild(ta);
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(yaml).then(feedback, fallback);
+    navigator.clipboard.writeText(text).then(feedback, fallback);
   } else {
     fallback();
   }
+}
+
+function copyRecord(btn) {
+  copyText(buildRecordYaml(activeTab), btn);
 }
 
 render();
