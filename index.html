@@ -33,6 +33,9 @@
     .header-sub { font-size: 10px; opacity: 0.4; letter-spacing: 0.3em; margin-bottom: 4px; }
     .header-title { font-size: 18px; font-weight: 700; letter-spacing: 0.1em; }
     .header-date { font-size: 11px; opacity: 0.35; margin-top: 4px; font-family: 'Noto Sans JP', sans-serif; }
+    .header-sync { font-size: 10px; margin-top: 3px; font-family: 'Noto Sans JP', sans-serif; color: #777; letter-spacing: 0.05em; }
+    .header-sync.ok { color: #7a9e87; }
+    .header-sync.off { color: #c8a86b; }
 
     /* Tabs */
     .tabs {
@@ -459,6 +462,116 @@ function saveDone() {
 }
 loadDone();
 
+// ── 端末間の同期 ─────────────────────────────────────
+// チェック状態と期限表を Google Apps Script 経由で全端末共有する。
+// オフライン時はこの端末に保存し、つながったときに自動送信する。
+const SYNC_URL = "https://script.google.com/macros/s/AKfycbzYCusyBESImoIeJ-MN-WgzSBsgOl7bvKXb7Zc5auGBwuAcz1nRcnBRUEXLQGnF2Kaf/exec";
+const PENDING_KEY = "hano_pending_v1";
+let pending = [];
+let sendBusy = false;
+let syncState = { text: "同期中…", cls: "" };
+
+function loadPending() {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (Array.isArray(d)) pending = d;
+    }
+  } catch (e) {}
+}
+function savePending() {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (e) {}
+}
+loadPending();
+
+function setSyncStatus(text, cls) {
+  syncState = { text: text, cls: cls || "" };
+  const el = document.getElementById("sync-status");
+  if (el) { el.textContent = text; el.className = "header-sync " + syncState.cls; }
+}
+
+function applyOpLocal(op) {
+  if (!op || !op.t) return;
+  if (op.t === "check") {
+    if (op.val) done[op.id] = true; else delete done[op.id];
+  } else if (op.t === "reset" || op.t === "newday") {
+    (op.ids || []).forEach(id => delete done[id]);
+  } else if (op.t === "expAdd") {
+    if (op.item && !exp.items.some(x => x.id === op.item.id)) exp.items.push(op.item);
+  } else if (op.t === "expDel") {
+    exp.items = exp.items.filter(x => x.id !== op.id);
+  } else if (op.t === "expDate") {
+    const it = exp.items.find(x => x.id === op.id);
+    if (it && op.date) it.date = op.date;
+  }
+}
+
+// 入力中に画面を描き直すと文字が消えるので、その間は再描画しない
+function maybeRender() {
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT")) return;
+  render();
+}
+
+function applyServerState(state) {
+  if (!state || typeof state !== "object" || !state.done || !state.exp) return;
+  done = state.done;
+  exp = Array.isArray(state.exp.items) ? state.exp : { items: [] };
+  pending.forEach(applyOpLocal); // 未送信の操作を上乗せ
+  if (state.opsDate !== todayStr() && !pending.some(p => p.t === "newday" && p.date === todayStr())) {
+    // 日付が変わっていたら営業タブを新しい日にする（どれか1台が送れば全端末に効く）
+    const ids = TAB_DATA.ops.flatMap(s => s.items).map(i => i.id);
+    ids.forEach(id => delete done[id]);
+    enqueue({ t: "newday", date: todayStr(), ids: ids });
+  }
+  saveDone();
+  saveExp();
+  setSyncStatus("☁ 同期済み " + new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }), "ok");
+  maybeRender();
+}
+
+function syncFailed() {
+  sendBusy = false;
+  setSyncStatus("オフライン（この端末に保存中）", "off");
+  setTimeout(flush, 15000);
+}
+
+function flush() {
+  if (sendBusy || !pending.length) return;
+  sendBusy = true;
+  const batch = pending.slice();
+  fetch(SYNC_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ ops: batch }) })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(state => {
+      pending = pending.slice(batch.length);
+      savePending();
+      sendBusy = false;
+      applyServerState(state);
+      if (pending.length) flush();
+    })
+    .catch(syncFailed);
+}
+
+function fetchState() {
+  if (pending.length) { flush(); return; }
+  fetch(SYNC_URL)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(applyServerState)
+    .catch(() => setSyncStatus("オフライン（この端末に保存中）", "off"));
+}
+
+function enqueue(op) {
+  pending.push(op);
+  savePending();
+  flush();
+}
+
+setInterval(() => { if (pending.length) flush(); else fetchState(); }, 25000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { if (pending.length) flush(); else fetchState(); }
+});
+
 function getAllItems(tabId) {
   return TAB_DATA[tabId].flatMap(s => s.items);
 }
@@ -486,22 +599,30 @@ function addExp() {
   const name = nameEl.value.trim();
   if (!name) { nameEl.focus(); return; }
   if (!dateEl.value) { dateEl.focus(); return; }
-  exp.items.push({ id: uid(), name: name, date: dateEl.value });
+  const item = { id: uid(), name: name, date: dateEl.value };
+  exp.items.push(item);
   saveExp();
+  enqueue({ t: "expAdd", item: item });
   render();
 }
 
 function delExp(id) {
   const it = exp.items.find(x => x.id === id);
-  if (!confirm((it ? "「" + it.name + "」" : "この行") + "を期限表から消しますか？")) return;
+  if (!confirm((it ? "「" + it.name + "」" : "この行") + "を期限表から消しますか？（全端末に反映されます）")) return;
   exp.items = exp.items.filter(x => x.id !== id);
   saveExp();
+  enqueue({ t: "expDel", id: id });
   render();
 }
 
 function updateExpDate(id, value) {
   const it = exp.items.find(x => x.id === id);
-  if (it && value) { it.date = value; saveExp(); render(); }
+  if (it && value) {
+    it.date = value;
+    saveExp();
+    enqueue({ t: "expDate", id: id, date: value });
+    render();
+  }
 }
 
 function expDays(dateStr) {
@@ -861,6 +982,7 @@ function chromeHtml() {
       <div class="header-sub">HANO COFFEE</div>
       <div class="header-title">作業管理</div>
       <div class="header-date">${dateStr}</div>
+      <div class="header-sync ${syncState.cls}" id="sync-status">${syncState.text}</div>
     </div>
 
     <div class="tabs">
@@ -952,13 +1074,16 @@ function switchTab(tabId) {
 function toggleItem(id) {
   done[id] = !done[id];
   saveDone();
+  enqueue({ t: "check", id: id, val: !!done[id] });
   render();
 }
 
 function resetTab() {
-  if (!confirm("このタブのチェックをすべて外しますか？")) return;
-  getAllItems(activeTab).forEach(i => delete done[i.id]);
+  if (!confirm("このタブのチェックをすべて外しますか？（全端末に反映されます）")) return;
+  const ids = getAllItems(activeTab).map(i => i.id);
+  ids.forEach(id => delete done[id]);
   saveDone();
+  enqueue({ t: "reset", ids: ids });
   render();
 }
 
@@ -1011,6 +1136,8 @@ function copyRecord(btn) {
 }
 
 render();
+// まず端末内の状態で表示し、そのあとサーバーの最新状態を取り込む
+if (pending.length) flush(); else fetchState();
 </script>
 </body>
 </html>
