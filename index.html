@@ -144,6 +144,23 @@
       text-decoration: line-through;
       text-decoration-color: #bbb;
     }
+    /* 曜日限定の項目（今日が該当日のときだけ表示され、色で目立たせる） */
+    .item-btn.today-only { border-color: #d9b36a; background: #fdf8ec; }
+    .item-btn.today-only .checkbox { border-color: #d9b36a; }
+    .item-btn.today-only.checked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .item-btn.today-only.checked .checkbox { border-color: var(--accent); }
+    .today-tag {
+      display: inline-block;
+      font-size: 9px;
+      padding: 1px 7px;
+      border-radius: 8px;
+      background: #d9b36a;
+      color: #fff;
+      margin-left: 7px;
+      vertical-align: 1px;
+      letter-spacing: 0.1em;
+    }
+    .item-btn.checked .today-tag { background: #cbbfa8; }
 
     /* SNS運用 */
     .subnav { display: flex; gap: 6px; padding: 14px 16px 0; }
@@ -299,9 +316,8 @@ const TAB_DATA = {
       { id: "o10", text: "床を掃除機で掃除" },
       { id: "o26", text: "ステアとパドラーの入れ物に水を入れる" },
       { id: "o27", text: "エスプレッソグラインダーに豆を入れる" },
-      { id: "o28", text: "フレグランスカップ用の豆を挽く（火曜夜・金曜夜）" },
+      { id: "o28", text: "フレグランスカップ用の豆を挽く（火曜夜・金曜夜）", days: [2, 5] },
       { id: "o29", text: "フォーマーを組み立てる" },
-      { id: "o30", text: "皿を棚から出す（火曜夜）" },
       { id: "o31", text: "テーブル拭き" },
       { id: "o35", text: "トイレ掃除" },
       { id: "o38", text: "iPadとお会計モニターが接続されているか確認" },
@@ -315,7 +331,7 @@ const TAB_DATA = {
     { id: "during", label: "営業中", color: "#7a8aaa", items: [
       { id: "o23", text: "ケーキの在庫チェック" },
       { id: "o24", text: "14:00 エスプレッソマシンの水補充" },
-      { id: "o25", text: "タカナシ発注（水曜・日曜のみ）" },
+      { id: "o25", text: "タカナシ発注（水曜・日曜のみ）", days: [3, 0] },
     ]},
     { id: "post", label: "営業後", color: "#9a7a8a", items: [
       { id: "o13", text: "自動ドアの電源を切る" },
@@ -330,9 +346,8 @@ const TAB_DATA = {
       { id: "o22", text: "レジ金を確認して取り出す" },
       { id: "o32", text: "エスプレッソグラインダーの豆を出す（残り少ない場合は入れたままにして翌日上から補充）" },
       { id: "o33", text: "フォーマーを薬浸けにする" },
-      { id: "o34", text: "皿を棚にしまう（日曜夜）" },
       { id: "o39", text: "賞味期限チェック（期限タブで確認）" },
-      { id: "o40", text: "ダスターを新しくする（金曜夜）" },
+      { id: "o40", text: "ダスターを新しくする（金曜夜）", days: [5] },
     ]},
   ],
   stamp: [
@@ -573,8 +588,13 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) { if (pending.length) flush(); else fetchState(); }
 });
 
+// 曜日指定の項目（days: 0=日〜6=土）は、その曜日だけ表示する
+function isItemToday(item) {
+  return !item.days || item.days.includes(new Date().getDay());
+}
+
 function getAllItems(tabId) {
-  return TAB_DATA[tabId].flatMap(s => s.items);
+  return TAB_DATA[tabId].flatMap(s => s.items).filter(isItemToday);
 }
 
 // ── 期限チェック表 ──────────────────────────────────
@@ -1017,19 +1037,22 @@ function progressHtml(tabId) {
 
 function checklistHtml(tabId) {
   return `
-    ${TAB_DATA[tabId].map(section => `
+    ${TAB_DATA[tabId].map(section => {
+      const items = section.items.filter(isItemToday);
+      if (!items.length) return "";
+      return `
       <div class="section">
         <div class="section-header">
           <div class="section-bar" style="background: ${section.color}"></div>
           <span class="section-label">${section.label}</span>
           <span class="section-count" style="color: ${section.color}">
-            ${section.items.filter(i => done[i.id]).length}/${section.items.length}
+            ${items.filter(i => done[i.id]).length}/${items.length}
           </span>
         </div>
         <div class="items">
-          ${section.items.map(item => `
+          ${items.map(item => `
             <button
-              class="item-btn ${done[item.id] ? "checked" : ""}"
+              class="item-btn ${done[item.id] ? "checked" : ""}${item.days ? " today-only" : ""}"
               style="--accent: ${section.color}"
               onclick="toggleItem('${item.id}')"
             >
@@ -1038,12 +1061,12 @@ function checklistHtml(tabId) {
                   <path d="M1 3.5L4 6.5L10 1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </div>
-              <span class="item-text">${item.text}</span>
+              <span class="item-text">${item.text}${item.days ? '<span class="today-tag">今日</span>' : ""}</span>
             </button>
           `).join("")}
         </div>
       </div>
-    `).join("")}
+    `;}).join("")}
 
     <div class="reset-wrap">
       <button class="reset-btn" onclick="copyRecord(this)">記録をコピー</button>
@@ -1100,9 +1123,11 @@ function buildRecordYaml(tabId) {
   L.push("date: " + todayStr());
   L.push("タブ: " + yamlq(tab ? tab.label : tabId));
   TAB_DATA[tabId].forEach(section => {
+    const items = section.items.filter(isItemToday);
+    if (!items.length) return;
     L.push("");
     L.push(yamlq(section.label) + ":");
-    section.items.forEach(it => {
+    items.forEach(it => {
       L.push("  - 済: " + (done[it.id] ? "true" : "false"));
       L.push("    項目: " + yamlq(it.text));
     });
