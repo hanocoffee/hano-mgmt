@@ -1,0 +1,16 @@
+services:
+  atlas:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ATLAS_DB_PATH: /data/atlas.db
+    volumes:
+      - atlas-data:/data
+    # Override the command to run other subcommands, e.g.:
+    #   docker compose run --rm atlas run --query coffee
+    command: ["run"]
+
+volumes:
+  atlas-data:
