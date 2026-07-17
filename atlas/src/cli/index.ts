@@ -1,7 +1,26 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { createApp } from '../container.js';
-import type { StoredInsight } from '../core/types.js';
+import { parseSourceItems } from '../sources/file-import.js';
+import {
+  buildOpportunityReport,
+  renderReportJson,
+  renderReportMarkdown,
+} from '../reports/opportunity-report.js';
+import type { StoredInsight, StoredPainPoint } from '../core/types.js';
+
+function printPainPoint(pain: StoredPainPoint): void {
+  console.log(
+    `#${pain.id} score=${pain.opportunityScore} conf=${pain.confidence} [${pain.clusterKey}]`,
+  );
+  console.log(`  ${pain.problemStatement}`);
+  console.log(`  target: ${pain.targetUser} | doc: ${pain.documentId}`);
+  console.log(
+    `  sev=${pain.severity} freq=${pain.frequency} wtp=${pain.willingnessToPay} ` +
+      `auto=${pain.automationFit} reach=${pain.reachability} evid=${pain.evidenceQuality}`,
+  );
+}
 
 function printInsight(insight: StoredInsight): void {
   console.log(`\nInsight #${insight.id} (${insight.analyzerId}, ${insight.createdAt})`);
@@ -93,8 +112,8 @@ program
   });
 
 program
-  .command('report')
-  .description('Show the latest stored insights')
+  .command('insights')
+  .description('Show the latest stored insights (summary analysis)')
   .option('-n, --limit <n>', 'number of insights to show', (v) => Number.parseInt(v, 10), 5)
   .action((opts: { limit: number }) => {
     const app = createApp();
@@ -107,6 +126,120 @@ program
       for (const insight of insights) {
         printInsight(insight);
       }
+    } finally {
+      app.close();
+    }
+  });
+
+program
+  .command('import')
+  .description('Import manually collected items (JSON array or JSONL) as documents')
+  .argument('<file>', 'path to a .json / .jsonl file')
+  .option('--source-id <id>', 'sourceId for records that do not specify one', 'manual')
+  .action((file: string, opts: { sourceId: string }) => {
+    const app = createApp();
+    try {
+      const raw = readFileSync(file, 'utf8');
+      const { items, errors } = parseSourceItems(raw, { defaultSourceId: opts.sourceId });
+      const stored = app.documents.upsertMany(items);
+      console.log(`Imported ${stored.length} document(s) from ${file}`);
+      if (errors.length > 0) {
+        console.log(`Skipped ${errors.length} record(s):`);
+        for (const error of errors) {
+          console.log(`  - ${error}`);
+        }
+      }
+      console.log(`Total documents in DB: ${app.documents.count()}`);
+    } finally {
+      app.close();
+    }
+  });
+
+program
+  .command('analyze-pains')
+  .description('Extract and evaluate pain points from stored documents (two-stage analysis)')
+  .option('--all', 're-analyze all documents, not only unprocessed ones')
+  .option('-l, --limit <n>', 'max documents to process', (v) => Number.parseInt(v, 10))
+  .action(async (opts: { all?: boolean; limit?: number }) => {
+    const app = createApp();
+    try {
+      const summary = await app.painPipeline.analyze({ all: opts.all, limit: opts.limit });
+      console.log(
+        `Processed ${summary.documentsProcessed} document(s): ` +
+          `${summary.painPointsSaved} pain point(s), ${summary.ideasSaved} idea(s) saved` +
+          (summary.evaluationsRejected > 0
+            ? `, ${summary.evaluationsRejected} evaluation(s) rejected`
+            : '') +
+          (summary.documentsFailed > 0 ? `, ${summary.documentsFailed} document(s) failed` : ''),
+      );
+    } finally {
+      app.close();
+    }
+  });
+
+program
+  .command('pains')
+  .description('List pain points ordered by opportunity score')
+  .option('-n, --limit <n>', 'number of pain points to show', (v) => Number.parseInt(v, 10), 20)
+  .action((opts: { limit: number }) => {
+    const app = createApp();
+    try {
+      const pains = app.painPoints.listPains(opts.limit);
+      if (pains.length === 0) {
+        console.log('No pain points yet. Run `atlas import <file>` then `atlas analyze-pains`.');
+        return;
+      }
+      for (const pain of pains) {
+        printPainPoint(pain);
+      }
+    } finally {
+      app.close();
+    }
+  });
+
+program
+  .command('ideas')
+  .description('List business ideas ordered by their pain point opportunity score')
+  .option('-n, --limit <n>', 'number of ideas to show', (v) => Number.parseInt(v, 10), 20)
+  .action((opts: { limit: number }) => {
+    const app = createApp();
+    try {
+      const ideas = app.painPoints.listIdeas(opts.limit);
+      if (ideas.length === 0) {
+        console.log('No business ideas yet. Run `atlas analyze-pains` first.');
+        return;
+      }
+      for (const idea of ideas) {
+        console.log(`#${idea.id} score=${idea.opportunityScore} [${idea.status}] ${idea.name}`);
+        console.log(`  ${idea.valueProposition}`);
+        console.log(`  pain: ${idea.problemStatement}`);
+        console.log(
+          `  ${idea.productType} / ${idea.suggestedPriceModel} / build: ${idea.estimatedBuildComplexity}`,
+        );
+      }
+    } finally {
+      app.close();
+    }
+  });
+
+program
+  .command('report')
+  .description('Output the top pain points and business ideas')
+  .option('-f, --format <format>', 'markdown | json', 'markdown')
+  .option('-t, --top <n>', 'number of top pain points', (v) => Number.parseInt(v, 10), 5)
+  .action((opts: { format: string; top: number }) => {
+    const app = createApp();
+    try {
+      if (opts.format !== 'markdown' && opts.format !== 'json') {
+        console.error(`Unknown format: ${opts.format} (use markdown or json)`);
+        process.exitCode = 1;
+        return;
+      }
+      const report = buildOpportunityReport(
+        { documents: app.documents, painPoints: app.painPoints },
+        opts.top,
+      );
+      console.log(opts.format === 'json' ? renderReportJson(report) : renderReportMarkdown(report));
     } finally {
       app.close();
     }

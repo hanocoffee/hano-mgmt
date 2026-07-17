@@ -13,22 +13,43 @@ AIを使って利益を生み出す事業を作る「Atlas」プロジェクト�
 
 ```
 src/
-├── core/            # ドメインの中心（実装に依存しない）
-│   ├── types.ts     #   SourceItem / StoredDocument / AnalysisResult など
-│   ├── source.ts    #   MarketDataSource インターフェース + SourceRegistry
-│   ├── analyzer.ts  #   MarketAnalyzer インターフェース
-│   └── pipeline.ts  #   収集 → 保存 → 分析 → 保存 のオーケストレーション
-├── sources/         # データソース実装（ここにAPI連携を追加していく）
-│   └── mock-source.ts
-├── analyzers/       # AI分析実装
-│   ├── mock-analyzer.ts    # オフライン用ヒューリスティック
-│   └── openai-analyzer.ts  # ChatGPT (OpenAI API) 分析
-├── storage/         # SQLite（better-sqlite3）+ リポジトリ
-├── logging/         # Logger インターフェース + JSON Lines 実装
-├── config/          # .env 読み込み（dotenv）
-├── container.ts     # 依存の組み立て（composition root）
-└── cli/index.ts     # CLIエントリポイント（commander）
+├── core/                # ドメインの中心（実装に依存しない）
+│   ├── types.ts         #   SourceItem / PainPoint / BusinessIdea など
+│   ├── source.ts        #   MarketDataSource インターフェース + SourceRegistry
+│   ├── analyzer.ts      #   MarketAnalyzer / PainPointExtractor / PainPointEvaluator
+│   ├── scoring.ts       #   決定論的スコア計算 + LLM出力の検証
+│   ├── pipeline.ts      #   収集 → 保存 → 要約分析（旧フロー）
+│   └── pain-pipeline.ts #   2段階Pain Point分析（抽出 → 評価 → 保存）
+├── prompts/             # LLMプロンプト（バージョン付き、Analyzerから分離）
+│   ├── extract-pain.ts  #   困りごとの抽出
+│   └── evaluate-pain.ts #   商業性の評価 + 事業案生成
+├── sources/             # データソース実装
+│   ├── mock-source.ts   #   サンプルデータ
+│   └── file-import.ts   #   手動収集したJSON/JSONLの取り込み
+├── analyzers/           # AI分析実装（mock / openai を .env で切替）
+├── reports/             # レポート組み立て（Markdown / JSON）
+├── storage/             # SQLite（better-sqlite3）+ リポジトリ、バージョン管理式マイグレーション
+├── logging/             # Logger インターフェース + JSON Lines 実装
+├── config/              # .env 読み込み（dotenv）
+├── container.ts         # 依存の組み立て（composition root）
+└── cli/index.ts         # CLIエントリポイント（commander）
 ```
+
+## データモデル
+
+「文章の要約」ではなく「何を売るかの判断」のためのモデル:
+
+- **documents** — 収集した生データ（(source_id, external_id)で重複排除）
+- **pain_points** — 抽出された困りごと。6軸スコア（severity / frequency /
+  willingness_to_pay / automation_fit / reachability / evidence_quality、
+  すべて0-1のCHECK制約付き）と、TypeScriptで決定論的に計算される
+  opportunity_score、confidence、cluster_key（同一課題のグルーピング用）を保持
+- **evidence** — 各pain pointを裏付ける原文からの逐語引用
+- **business_ideas** — pain pointから生成された事業案候補（1つの困りごとから複数可）
+
+スコアはLLMに一発で出させません。LLMは各評価軸を理由・証拠ID付きで返し、
+最終スコアは `core/scoring.ts` の重み付き平均で計算します。
+**理由のない評価は保存を拒否**し、**証拠のないスコアは0.5でキャップ**します。
 
 **拡張ポイント:**
 
@@ -47,19 +68,50 @@ pnpm install
 cp .env.example .env   # 必要に応じて編集
 ```
 
-## 使い方
+## 使い方: 手動収集 → Pain Point分析 → 事業案レポート
+
+メインのワークフロー。手動で集めた困りごと（50件目標）を投入し、
+評価済みの事業機会レポートを出します。
+
+### 1. 収集データをJSONLで用意する
+
+1行1レコード。`content`だけが必須です（`externalId`省略時は内容のハッシュで
+自動採番されるため、同じファイルを再投入しても重複しません）:
+
+```jsonl
+{"title": "Cafe owners waste hours on manual inventory", "content": "I spend 6 hours every week ...", "url": "https://...", "publishedAt": "2026-06-15T09:00:00Z"}
+{"content": "Every week I lose an evening to invoicing by hand. ..."}
+```
+
+サンプル: [docs/examples/sample-items.jsonl](docs/examples/sample-items.jsonl)
+（JSON配列 `[{...}, {...}]` 形式のファイルも可）
+
+### 2. 投入 → 分析 → レポート
 
 ```bash
-# 開発モード（ビルド不要）
+pnpm dev import docs/examples/sample-items.jsonl   # SQLiteへ取り込み
+pnpm dev analyze-pains                             # 抽出 → 評価（未処理分のみ）
+pnpm dev pains                                     # pain pointをスコア順に表示
+pnpm dev ideas                                     # 事業案をスコア順に表示
+pnpm dev report --format markdown --top 5          # レポート出力（json も可）
+pnpm dev report --format markdown > report.md      # ファイルに保存
+```
+
+ChatGPT分析で実行する場合は `.env` に `ATLAS_ANALYZER=openai` と
+`OPENAI_API_KEY` を設定してから `analyze-pains` を実行します。
+`--all` で全ドキュメントを再分析（プロンプト改定後など）。
+
+### その他のコマンド
+
+```bash
 pnpm dev sources                 # 登録済みデータソース一覧
-pnpm dev collect --query coffee  # データ収集のみ
-pnpm dev analyze                 # 保存済みデータの分析のみ
-pnpm dev run --query ai          # 収集 + 分析（フルパイプライン）
-pnpm dev report                  # 最新インサイトの表示
+pnpm dev collect --query coffee  # データソースからの収集
+pnpm dev run --query ai          # 収集 + 要約分析（旧フロー）
+pnpm dev insights                # 要約インサイトの表示
 
 # ビルドして実行
 pnpm build
-pnpm start run --query coffee
+pnpm start report --format markdown
 ```
 
 ログはJSON Linesでstderrに出力されるため、stdout（結果）と分離されています。

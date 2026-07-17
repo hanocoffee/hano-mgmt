@@ -1,12 +1,16 @@
 import { loadConfig, type AtlasConfig } from './config/env.js';
 import { SourceRegistry } from './core/source.js';
-import type { MarketAnalyzer } from './core/analyzer.js';
+import type { MarketAnalyzer, PainPointExtractor, PainPointEvaluator } from './core/analyzer.js';
 import { ResearchPipeline } from './core/pipeline.js';
+import { PainAnalysisPipeline } from './core/pain-pipeline.js';
 import { MockNewsSource } from './sources/mock-source.js';
 import { MockAnalyzer } from './analyzers/mock-analyzer.js';
 import { OpenAIAnalyzer, OpenAIChatClient } from './analyzers/openai-analyzer.js';
+import { MockPainExtractor, MockPainEvaluator } from './analyzers/mock-pain-analyzer.js';
+import { OpenAIPainExtractor, OpenAIPainEvaluator } from './analyzers/openai-pain-analyzer.js';
 import { openDatabase, type AtlasDatabase } from './storage/database.js';
 import { DocumentRepository, InsightRepository } from './storage/repositories.js';
+import { PainPointRepository } from './storage/pain-repository.js';
 import { ConsoleLogger, type Logger } from './logging/logger.js';
 
 export interface AtlasApp {
@@ -17,7 +21,9 @@ export interface AtlasApp {
   analyzer: MarketAnalyzer;
   documents: DocumentRepository;
   insights: InsightRepository;
+  painPoints: PainPointRepository;
   pipeline: ResearchPipeline;
+  painPipeline: PainAnalysisPipeline;
   close(): void;
 }
 
@@ -52,6 +58,40 @@ function buildAnalyzer(config: AtlasConfig, logger: Logger): MarketAnalyzer {
   return factory();
 }
 
+/** Register new pain-point extractor/evaluator pairs here, keyed by config name. */
+function buildPainAnalyzers(
+  config: AtlasConfig,
+  logger: Logger,
+): { extractor: PainPointExtractor; evaluator: PainPointEvaluator } {
+  const pairs: Record<string, () => { extractor: PainPointExtractor; evaluator: PainPointEvaluator }> =
+    {
+      mock: () => ({ extractor: new MockPainExtractor(), evaluator: new MockPainEvaluator() }),
+      openai: () => {
+        if (!config.openaiApiKey) {
+          throw new Error(
+            'ATLAS_ANALYZER=openai requires OPENAI_API_KEY to be set (see .env.example)',
+          );
+        }
+        const client = new OpenAIChatClient({
+          apiKey: config.openaiApiKey,
+          baseUrl: config.openaiBaseUrl,
+        });
+        const options = { client, model: config.openaiModel, logger };
+        return {
+          extractor: new OpenAIPainExtractor(options),
+          evaluator: new OpenAIPainEvaluator(options),
+        };
+      },
+    };
+  const factory = pairs[config.analyzer];
+  if (!factory) {
+    throw new Error(
+      `Unknown analyzer: ${config.analyzer} (available: ${Object.keys(pairs).join(', ')})`,
+    );
+  }
+  return factory();
+}
+
 /** Composition root: wires config, storage, sources, analyzer and pipeline. */
 export function createApp(overrides: Partial<AtlasConfig> = {}): AtlasApp {
   const config = { ...loadConfig(), ...overrides };
@@ -59,9 +99,18 @@ export function createApp(overrides: Partial<AtlasConfig> = {}): AtlasApp {
   const db = openDatabase(config.dbPath);
   const documents = new DocumentRepository(db);
   const insights = new InsightRepository(db);
+  const painPoints = new PainPointRepository(db);
   const sources = buildSourceRegistry();
   const analyzer = buildAnalyzer(config, logger.child({ component: 'analyzer' }));
+  const painAnalyzers = buildPainAnalyzers(config, logger.child({ component: 'pain-analyzer' }));
   const pipeline = new ResearchPipeline({ sources, analyzer, documents, insights, logger });
+  const painPipeline = new PainAnalysisPipeline({
+    extractor: painAnalyzers.extractor,
+    evaluator: painAnalyzers.evaluator,
+    documents,
+    painPoints,
+    logger,
+  });
 
   return {
     config,
@@ -71,7 +120,9 @@ export function createApp(overrides: Partial<AtlasConfig> = {}): AtlasApp {
     analyzer,
     documents,
     insights,
+    painPoints,
     pipeline,
+    painPipeline,
     close: () => db.close(),
   };
 }
