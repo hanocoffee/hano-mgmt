@@ -4,6 +4,7 @@ import type { MarketAnalyzer } from './core/analyzer.js';
 import { ResearchPipeline } from './core/pipeline.js';
 import { MockNewsSource } from './sources/mock-source.js';
 import { MockAnalyzer } from './analyzers/mock-analyzer.js';
+import { OpenAIAnalyzer, OpenAIChatClient } from './analyzers/openai-analyzer.js';
 import { openDatabase, type AtlasDatabase } from './storage/database.js';
 import { DocumentRepository, InsightRepository } from './storage/repositories.js';
 import { ConsoleLogger, type Logger } from './logging/logger.js';
@@ -28,13 +29,25 @@ function buildSourceRegistry(): SourceRegistry {
 }
 
 /** Register new analyzer implementations here, keyed by config name. */
-function buildAnalyzer(name: string): MarketAnalyzer {
+function buildAnalyzer(config: AtlasConfig, logger: Logger): MarketAnalyzer {
   const analyzers: Record<string, () => MarketAnalyzer> = {
     mock: () => new MockAnalyzer(),
+    openai: () => {
+      if (!config.openaiApiKey) {
+        throw new Error('ATLAS_ANALYZER=openai requires OPENAI_API_KEY to be set (see .env.example)');
+      }
+      const client = new OpenAIChatClient({
+        apiKey: config.openaiApiKey,
+        baseUrl: config.openaiBaseUrl,
+      });
+      return new OpenAIAnalyzer({ client, model: config.openaiModel, logger });
+    },
   };
-  const factory = analyzers[name];
+  const factory = analyzers[config.analyzer];
   if (!factory) {
-    throw new Error(`Unknown analyzer: ${name} (available: ${Object.keys(analyzers).join(', ')})`);
+    throw new Error(
+      `Unknown analyzer: ${config.analyzer} (available: ${Object.keys(analyzers).join(', ')})`,
+    );
   }
   return factory();
 }
@@ -47,7 +60,7 @@ export function createApp(overrides: Partial<AtlasConfig> = {}): AtlasApp {
   const documents = new DocumentRepository(db);
   const insights = new InsightRepository(db);
   const sources = buildSourceRegistry();
-  const analyzer = buildAnalyzer(config.analyzer);
+  const analyzer = buildAnalyzer(config, logger.child({ component: 'analyzer' }));
   const pipeline = new ResearchPipeline({ sources, analyzer, documents, insights, logger });
 
   return {

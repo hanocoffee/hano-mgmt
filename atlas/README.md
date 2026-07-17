@@ -3,7 +3,11 @@
 AIを使って利益を生み出す事業を作る「Atlas」プロジェクトのMVP。
 複数の情報源から市場データを収集し、AI分析でインサイト（要約・センチメント・キーワード・機会スコア）を生成してSQLiteに保存するCLIツールです。
 
-現時点では外部API連携なしで動作します（モックのデータソース・アナライザーを同梱）。
+デフォルトでは外部API連携なしで動作します（モックのデータソース・アナライザーを同梱）。
+`ATLAS_ANALYZER=openai` に切り替えると、分析にChatGPT（OpenAI API）を使用します。
+
+開発の進め方は「ChatGPTで壁打ち → Claude Codeで実装」の分担スタイルです。
+詳細とコピペ用プロンプト集は [docs/chatgpt-collaboration.md](docs/chatgpt-collaboration.md) を参照。
 
 ## アーキテクチャ
 
@@ -16,8 +20,9 @@ src/
 │   └── pipeline.ts  #   収集 → 保存 → 分析 → 保存 のオーケストレーション
 ├── sources/         # データソース実装（ここにAPI連携を追加していく）
 │   └── mock-source.ts
-├── analyzers/       # AI分析実装（ここにLLM連携を追加していく）
-│   └── mock-analyzer.ts
+├── analyzers/       # AI分析実装
+│   ├── mock-analyzer.ts    # オフライン用ヒューリスティック
+│   └── openai-analyzer.ts  # ChatGPT (OpenAI API) 分析
 ├── storage/         # SQLite（better-sqlite3）+ リポジトリ
 ├── logging/         # Logger インターフェース + JSON Lines 実装
 ├── config/          # .env 読み込み（dotenv）
@@ -83,11 +88,23 @@ docker compose run --rm atlas report
 | --- | --- | --- |
 | `ATLAS_DB_PATH` | `data/atlas.db` | SQLiteファイルのパス（`:memory:` 可） |
 | `ATLAS_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
-| `ATLAS_ANALYZER` | `mock` | 使用するアナライザー実装 |
+| `ATLAS_ANALYZER` | `mock` | `mock` / `openai` |
+| `OPENAI_API_KEY` | — | `openai` 使用時に必須 |
+| `ATLAS_OPENAI_MODEL` | `gpt-4o-mini` | 分析に使うOpenAIモデル |
+| `ATLAS_OPENAI_BASE_URL` | OpenAI公式 | OpenAI互換エンドポイントの上書き |
+
+### ChatGPT分析を使う
+
+```bash
+# .env に設定
+ATLAS_ANALYZER=openai
+OPENAI_API_KEY=sk-...
+
+pnpm dev run --query coffee   # 分析がChatGPTで実行される
+```
 
 ## 今後のロードマップ（案）
 
 1. 実データソースの追加（ニュースAPI、RSS、SNS、ECレビューなど）
-2. LLMアナライザーの追加（Claude API連携、`ATLAS_ANALYZER=claude` で切替）
-3. インサイトの時系列比較・トレンド検出
-4. レポート出力（Markdown / HTML）と定期実行
+2. インサイトの時系列比較・トレンド検出
+3. レポート出力（Markdown / HTML）と定期実行
