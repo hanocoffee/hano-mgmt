@@ -50,6 +50,23 @@ describe('parseSourceItems', () => {
     expect(first?.externalId).toBe(second?.externalId);
   });
 
+  it('preserves top-level author and collectedAt inside metadata', () => {
+    const raw = JSON.stringify([
+      {
+        content: 'x',
+        author: 'user-42',
+        collectedAt: '2026-07-17T00:00:00Z',
+        metadata: { targetSegment: 'freelance' },
+      },
+    ]);
+    const { items } = parseSourceItems(raw);
+    expect(items[0]?.metadata).toEqual({
+      targetSegment: 'freelance',
+      author: 'user-42',
+      collectedAt: '2026-07-17T00:00:00Z',
+    });
+  });
+
   it('respects a custom default sourceId', () => {
     const raw = JSON.stringify([{ content: 'x' }]);
     const { items } = parseSourceItems(raw, { defaultSourceId: 'reddit-manual' });

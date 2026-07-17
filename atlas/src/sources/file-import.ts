@@ -36,6 +36,18 @@ function toSourceItem(
     typeof value.externalId === 'string' && value.externalId.trim()
       ? value.externalId.trim()
       : deriveExternalId(title, content);
+  const metadata: Record<string, unknown> = {
+    ...(typeof value.metadata === 'object' && value.metadata !== null
+      ? (value.metadata as Record<string, unknown>)
+      : {}),
+  };
+  // Preserve collection fields that have no column of their own.
+  if (typeof value.author === 'string' && value.author.trim()) {
+    metadata.author = value.author.trim();
+  }
+  if (typeof value.collectedAt === 'string' && value.collectedAt.trim()) {
+    metadata.collectedAt = value.collectedAt.trim();
+  }
   return {
     item: {
       sourceId:
@@ -50,10 +62,7 @@ function toSourceItem(
         typeof value.publishedAt === 'string' && value.publishedAt.trim()
           ? value.publishedAt.trim()
           : undefined,
-      metadata:
-        typeof value.metadata === 'object' && value.metadata !== null
-          ? (value.metadata as Record<string, unknown>)
-          : undefined,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     },
   };
 }
