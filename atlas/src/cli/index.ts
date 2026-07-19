@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { createApp } from '../container.js';
 import { parseSourceItems } from '../sources/file-import.js';
+import { buildClusters } from '../core/clustering.js';
 import {
   buildOpportunityReport,
   renderReportJson,
@@ -140,13 +141,19 @@ program
     const app = createApp();
     try {
       const raw = readFileSync(file, 'utf8');
-      const { items, errors } = parseSourceItems(raw, { defaultSourceId: opts.sourceId });
+      const { items, errors, warnings } = parseSourceItems(raw, { defaultSourceId: opts.sourceId });
       const stored = app.documents.upsertMany(items);
       console.log(`Imported ${stored.length} document(s) from ${file}`);
       if (errors.length > 0) {
         console.log(`Skipped ${errors.length} record(s):`);
         for (const error of errors) {
           console.log(`  - ${error}`);
+        }
+      }
+      if (warnings.length > 0) {
+        console.log(`Warnings (${warnings.length}):`);
+        for (const warning of warnings) {
+          console.log(`  - ${warning}`);
         }
       }
       console.log(`Total documents in DB: ${app.documents.count()}`);
@@ -191,6 +198,36 @@ program
       }
       for (const pain of pains) {
         printPainPoint(pain);
+      }
+    } finally {
+      app.close();
+    }
+  });
+
+program
+  .command('clusters')
+  .description('Group pain points into clusters of the same underlying problem')
+  .option('-n, --limit <n>', 'number of clusters to show', (v) => Number.parseInt(v, 10), 20)
+  .action((opts: { limit: number }) => {
+    const app = createApp();
+    try {
+      const clusters = buildClusters(app.painPoints.listPains(10000)).slice(0, opts.limit);
+      if (clusters.length === 0) {
+        console.log('No pain points yet. Run `atlas analyze-pains` first.');
+        return;
+      }
+      for (const cluster of clusters) {
+        console.log(
+          `[${cluster.key}] score=${cluster.score} pains=${cluster.size} docs=${cluster.documentCount} ` +
+            `avg=${cluster.avgOpportunity} max=${cluster.maxOpportunity}`,
+        );
+        const top = cluster.painPoints[0];
+        if (top) {
+          console.log(`  top: (#${top.id}) ${top.problemStatement}`);
+        }
+        if (cluster.mergedKeys.length > 1) {
+          console.log(`  merged: ${cluster.mergedKeys.join(', ')}`);
+        }
       }
     } finally {
       app.close();

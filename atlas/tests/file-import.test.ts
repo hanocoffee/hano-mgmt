@@ -50,6 +50,44 @@ describe('parseSourceItems', () => {
     expect(first?.externalId).toBe(second?.externalId);
   });
 
+  it('parses originalQuote and summary, using the quote as analysis content', () => {
+    const raw = JSON.stringify([
+      {
+        title: 'Invoice chasing',
+        originalQuote:
+          'I hate chasing invoices every month. I spend hours emailing clients and still do not get paid.',
+        summary: '請求書の催促が精神的につらい',
+        url: 'https://example.com/q',
+      },
+    ]);
+    const { items, errors, warnings } = parseSourceItems(raw);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(items[0]?.originalQuote).toContain('I hate chasing invoices');
+    expect(items[0]?.summary).toBe('請求書の催促が精神的につらい');
+    // no explicit content → falls back to the verbatim quote
+    expect(items[0]?.content).toBe(items[0]?.originalQuote);
+  });
+
+  it('warns when originalQuote is outside the 25-300 char guideline', () => {
+    const raw = [
+      JSON.stringify({ title: 'short', originalQuote: 'too short', summary: 's' }),
+      JSON.stringify({ title: 'long', originalQuote: 'x'.repeat(400), summary: 's' }),
+    ].join('\n');
+    const { items, warnings } = parseSourceItems(raw);
+    expect(items).toHaveLength(2);
+    expect(warnings.some((w) => w.includes('record 1') && w.includes('9 chars'))).toBe(true);
+    expect(warnings.some((w) => w.includes('record 2') && w.includes('400 chars'))).toBe(true);
+  });
+
+  it('warns when a record only has a summary (no verbatim quote)', () => {
+    const raw = JSON.stringify([{ title: 'summary only', summary: 'a paraphrased problem' }]);
+    const { items, warnings } = parseSourceItems(raw);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.content).toBe('a paraphrased problem');
+    expect(warnings.some((w) => w.includes('no originalQuote'))).toBe(true);
+  });
+
   it('preserves top-level author and collectedAt inside metadata', () => {
     const raw = JSON.stringify([
       {

@@ -112,6 +112,14 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_ideas_pain ON business_ideas (pain_point_id);
     `,
   },
+  {
+    version: 3,
+    name: 'separate original quote and summary on documents',
+    sql: `
+      ALTER TABLE documents ADD COLUMN original_quote TEXT;
+      ALTER TABLE documents ADD COLUMN summary TEXT;
+    `,
+  },
 ];
 
 export function migrate(db: AtlasDatabase): void {

@@ -57,26 +57,27 @@ describe('PainAnalysisPipeline (end-to-end with mock analyzers)', () => {
     const summary = await pipeline().analyze();
 
     expect(summary.documentsProcessed).toBe(2);
-    expect(summary.painPointsSaved).toBe(2);
-    expect(summary.ideasSaved).toBe(2);
+    // v2 extractor: doc 1 yields 1 pain, doc 2 yields 2 (multi-pain per post)
+    expect(summary.painPointsSaved).toBe(3);
+    expect(summary.ideasSaved).toBe(3);
     expect(summary.evaluationsRejected).toBe(0);
 
     const pains = painPoints.listPains();
-    expect(pains).toHaveLength(2);
+    expect(pains).toHaveLength(3);
     for (const pain of pains) {
       expect(pain.opportunityScore).toBeGreaterThanOrEqual(0);
       expect(pain.opportunityScore).toBeLessThanOrEqual(1);
       expect(painPoints.getEvidence(pain.id).length).toBeGreaterThan(0);
-      expect(pain.analyzerVersion).toBe('mock@1+mock@1');
+      expect(pain.analyzerVersion).toBe('mock@2+mock@1');
     }
-    expect(painPoints.listIdeas().length).toBe(2);
+    expect(painPoints.listIdeas().length).toBe(3);
   });
 
   it('skips already analyzed documents on the next run', async () => {
     await pipeline().analyze();
     const second = await pipeline().analyze();
     expect(second.documentsProcessed).toBe(0);
-    expect(painPoints.countPains()).toBe(2);
+    expect(painPoints.countPains()).toBe(3);
   });
 
   it('re-analyzes everything with all: true', async () => {
@@ -95,25 +96,30 @@ describe('PainAnalysisPipeline (end-to-end with mock analyzers)', () => {
     const summary = await pipeline(brokenEvaluator).analyze();
 
     expect(summary.painPointsSaved).toBe(0);
-    expect(summary.evaluationsRejected).toBe(2);
+    expect(summary.evaluationsRejected).toBe(3);
     expect(painPoints.countPains()).toBe(0);
     expect(painPoints.countIdeas()).toBe(0);
   });
 
-  it('produces a markdown and JSON report of the top pain points', async () => {
+  it('produces a markdown and JSON report with clusters and top pain points', async () => {
     await pipeline().analyze();
 
     const report = buildOpportunityReport({ documents, painPoints }, 5);
-    expect(report.totals.painPoints).toBe(2);
-    expect(report.topPainPoints.length).toBe(2);
+    expect(report.totals.painPoints).toBe(3);
+    expect(report.totals.clusters).toBeGreaterThan(0);
+    expect(report.topPainPoints.length).toBe(3);
+    expect(report.opportunities.length).toBeGreaterThan(0);
+    expect(report.opportunities[0]?.score).toBeGreaterThan(0);
 
     const markdown = renderReportMarkdown(report);
     expect(markdown).toContain('# Atlas Opportunity Report');
+    expect(markdown).toContain('## Opportunities (top clusters)');
     expect(markdown).toContain('Cafe owners waste hours on manual inventory');
     expect(markdown).toContain('### Evidence');
     expect(markdown).toContain('### Business ideas');
 
     const parsed = JSON.parse(renderReportJson(report)) as typeof report;
-    expect(parsed.topPainPoints).toHaveLength(2);
+    expect(parsed.topPainPoints).toHaveLength(3);
+    expect(parsed.opportunities.length).toBeGreaterThan(0);
   });
 });

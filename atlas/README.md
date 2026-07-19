@@ -36,11 +36,22 @@ src/
 └── cli/index.ts         # CLIエントリポイント（commander）
 ```
 
+## 分析フロー
+
+```
+50投稿 → 80 Pain Points → 20 Clusters → 5 Opportunities
+（import）  （analyze-pains:      （clusters:         （report:
+             1投稿から複数抽出）    同一課題を統合）     上位クラスタ=市場）
+```
+
 ## データモデル
 
 「文章の要約」ではなく「何を売るかの判断」のためのモデル:
 
 - **documents** — 収集した生データ（(source_id, external_id)で重複排除）
+  - `originalQuote` — 投稿者本人の逐語引用（25〜300文字、必要最小限）。**分析はこれを最優先で使う**
+  - `summary` — レポート表示・文脈用の要約。**分析の証拠には使わない**
+  - `content` — 全文（あれば）。originalQuoteがない場合の分析フォールバック
 - **pain_points** — 抽出された困りごと。6軸スコア（severity / frequency /
   willingness_to_pay / automation_fit / reachability / evidence_quality、
   すべて0-1のCHECK制約付き）と、TypeScriptで決定論的に計算される
@@ -76,27 +87,37 @@ cp .env.example .env   # 必要に応じて編集
 
 ### 1. 収集データをJSONLで用意する
 
-1行1レコード。`content`だけが必須です（`externalId`省略時は内容のハッシュで
-自動採番されるため、同じファイルを再投入しても重複しません）:
+1行1レコード。**`originalQuote`（投稿者本人の逐語引用）を必ず入れること** —
+AIは本人の言葉から深刻さや緊急性を判断するため、要約では情報量が大きく落ちます。
 
 ```jsonl
-{"title": "Cafe owners waste hours on manual inventory", "content": "I spend 6 hours every week ...", "url": "https://...", "publishedAt": "2026-06-15T09:00:00Z"}
-{"content": "Every week I lose an evening to invoicing by hand. ..."}
+{"title": "Invoice chasing", "originalQuote": "I hate chasing invoices every month. I spend hours emailing clients and still don't get paid.", "summary": "請求書の催促が精神的につらい", "url": "https://...", "metadata": {"targetSegment": "billing"}}
 ```
 
-サンプル: [docs/examples/sample-items.jsonl](docs/examples/sample-items.jsonl)
-（JSON配列 `[{...}, {...}]` 形式のファイルも可）
+| フィールド | 必須 | 説明 |
+| --- | --- | --- |
+| `originalQuote` | 推奨 | 本人の発言の逐語引用。25〜300文字、必要最小限（source-policy参照）。分析の主入力 |
+| `summary` | 任意 | Atlas用の要約。レポート表示・文脈用。証拠には使われない |
+| `content` | 任意 | 全文。originalQuoteがない場合のフォールバック |
+| `title` / `url` / `publishedAt` / `author` / `metadata` | 任意 | 出典情報（externalId省略時は内容ハッシュで自動採番、再投入しても重複しない） |
 
-### 2. 投入 → 分析 → レポート
+※ `originalQuote` / `content` / `summary` のどれか1つは必須。originalQuoteなしの
+レコードは取り込み時に警告が出ます（要約フォールバック分析になるため品質が落ちる）。
+
+### 2. 投入 → 分析 → クラスタ → レポート
 
 ```bash
-pnpm dev import docs/examples/sample-items.jsonl   # SQLiteへ取り込み
-pnpm dev analyze-pains                             # 抽出 → 評価（未処理分のみ）
+pnpm dev import data/research/raw-pains-001.jsonl  # SQLiteへ取り込み
+pnpm dev analyze-pains                             # 抽出（1投稿→複数可）→ 評価
 pnpm dev pains                                     # pain pointをスコア順に表示
+pnpm dev clusters                                  # 同一課題のクラスタ一覧
 pnpm dev ideas                                     # 事業案をスコア順に表示
-pnpm dev report --format markdown --top 5          # レポート出力（json も可）
-pnpm dev report --format markdown > report.md      # ファイルに保存
+pnpm dev report --format markdown --top 10         # クラスタ+上位pain pointのレポート
 ```
+
+クラスタは`cluster_key`のトークン類似度（Jaccard≥0.5）で同一課題を統合し、
+`スコア = 0.7×平均opportunity + 0.3×文書数の広がり(上限5)` でランク付けします。
+複数の投稿が同じ問題を指しているクラスタ＝「市場」として上位5件をレポートに出します。
 
 ChatGPT分析で実行する場合は `.env` に `ATLAS_ANALYZER=openai` と
 `OPENAI_API_KEY` を設定してから `analyze-pains` を実行します。

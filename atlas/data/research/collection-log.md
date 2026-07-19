@@ -41,6 +41,11 @@
 - 注意: このデータセットの `content` は原文ではなく課題の要約。宣伝・市場調査
   目的の投稿が混入している可能性あり。`publishedAt` / `author` は未確認のため空欄。
   **上位候補は必ず元URLを開いて再検証すること。**
-- 次のステップ: OPENAI_API_KEY を設定して `pnpm dev analyze-pains --all` を実行し、
-  ChatGPT評価で再分析する（現在のレポートはキーワードヒューリスティックによる
-  パイプライン動作確認であり、市場評価としては未成熟）。
+- 2026-07-19 (Phase 2): originalQuote/summary分離・複数Pain Point抽出・
+  クラスタリングを実装。48件を再分析 → 48 pain point → 11クラスタ →
+  report-002.md（クラスタ上位: invoice-payment-collection 15件 /
+  booking-scheduling 11件 / social-media-content 6件）。
+- **次の収集（raw-pains-002）から必須:** `originalQuote` に投稿者本人の
+  逐語引用（25〜300文字）を入れる。summaryは別フィールド。現在の001は
+  全件要約のみのため、分析はフォールバック動作（品質上限あり）。
+- OpenAI API切替はデータ構造確定後（Phase 2データが揃ってから）。

@@ -37,6 +37,16 @@ describe('DocumentRepository', () => {
     expect(doc.collectedAt).toBeTruthy();
   });
 
+  it('round-trips originalQuote and summary', () => {
+    const doc = repo.upsert(
+      item({ originalQuote: 'I hate chasing invoices every single month.', summary: '請求催促の負担' }),
+    );
+    expect(doc.originalQuote).toBe('I hate chasing invoices every single month.');
+    expect(doc.summary).toBe('請求催促の負担');
+    const listed = repo.findAll()[0];
+    expect(listed?.originalQuote).toBe('I hate chasing invoices every single month.');
+  });
+
   it('deduplicates by (sourceId, externalId) and updates content', () => {
     repo.upsert(item());
     const updated = repo.upsert(item({ title: 'Updated title' }));

@@ -65,6 +65,8 @@ interface DocumentRow {
   external_id: string;
   title: string;
   content: string;
+  original_quote: string | null;
+  summary: string | null;
   url: string | null;
   published_at: string | null;
   metadata: string | null;
@@ -135,6 +137,8 @@ function rowToDocument(row: DocumentRow): StoredDocument {
     externalId: row.external_id,
     title: row.title,
     content: row.content,
+    originalQuote: row.original_quote ?? undefined,
+    summary: row.summary ?? undefined,
     url: row.url ?? undefined,
     publishedAt: row.published_at ?? undefined,
     metadata: row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : undefined,

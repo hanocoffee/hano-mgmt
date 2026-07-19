@@ -5,7 +5,13 @@ export interface ImportParseResult {
   items: SourceItem[];
   /** Human-readable messages for records that could not be imported. */
   errors: string[];
+  /** Non-fatal quality notes (e.g. quote length outside the 25-300 char guideline). */
+  warnings: string[];
 }
+
+/** Guideline bounds for originalQuote (source-policy: minimal necessary excerpt). */
+export const QUOTE_MIN_CHARS = 25;
+export const QUOTE_MAX_CHARS = 300;
 
 /**
  * Stable external ID for records that don't provide one, so re-importing
@@ -19,14 +25,45 @@ function toSourceItem(
   record: unknown,
   index: number,
   defaultSourceId: string,
-): { item?: SourceItem; error?: string } {
+): { item?: SourceItem; error?: string; warnings?: string[] } {
   if (typeof record !== 'object' || record === null || Array.isArray(record)) {
     return { error: `record ${index + 1}: not a JSON object` };
   }
   const value = record as Record<string, unknown>;
-  const content = typeof value.content === 'string' ? value.content.trim() : '';
+  const warnings: string[] = [];
+  const originalQuote =
+    typeof value.originalQuote === 'string' && value.originalQuote.trim()
+      ? value.originalQuote.trim()
+      : undefined;
+  const summary =
+    typeof value.summary === 'string' && value.summary.trim() ? value.summary.trim() : undefined;
+  // Analysis text priority: verbatim quote > full content > summary.
+  const content =
+    (typeof value.content === 'string' && value.content.trim()
+      ? value.content.trim()
+      : undefined) ??
+    originalQuote ??
+    summary ??
+    '';
   if (!content) {
-    return { error: `record ${index + 1}: "content" is required and must be a non-empty string` };
+    return {
+      error: `record ${index + 1}: one of "originalQuote", "content" or "summary" is required`,
+    };
+  }
+  if (originalQuote) {
+    if (originalQuote.length < QUOTE_MIN_CHARS) {
+      warnings.push(
+        `record ${index + 1}: originalQuote is ${originalQuote.length} chars (guideline: ${QUOTE_MIN_CHARS}-${QUOTE_MAX_CHARS})`,
+      );
+    } else if (originalQuote.length > QUOTE_MAX_CHARS) {
+      warnings.push(
+        `record ${index + 1}: originalQuote is ${originalQuote.length} chars (guideline: ${QUOTE_MIN_CHARS}-${QUOTE_MAX_CHARS}; keep quotes minimal per source-policy)`,
+      );
+    }
+  } else if (summary) {
+    warnings.push(
+      `record ${index + 1}: no originalQuote — analysis will fall back to the summary/content text`,
+    );
   }
   const title =
     typeof value.title === 'string' && value.title.trim()
@@ -57,6 +94,8 @@ function toSourceItem(
       externalId,
       title,
       content,
+      originalQuote,
+      summary,
       url: typeof value.url === 'string' && value.url.trim() ? value.url.trim() : undefined,
       publishedAt:
         typeof value.publishedAt === 'string' && value.publishedAt.trim()
@@ -64,6 +103,7 @@ function toSourceItem(
           : undefined,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     },
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
 
@@ -79,8 +119,9 @@ export function parseSourceItems(
   const defaultSourceId = options.defaultSourceId ?? 'manual';
   const trimmed = raw.trim();
   const errors: string[] = [];
+  const warnings: string[] = [];
   if (!trimmed) {
-    return { items: [], errors: ['file is empty'] };
+    return { items: [], errors: ['file is empty'], warnings };
   }
 
   let records: unknown[] = [];
@@ -110,9 +151,10 @@ export function parseSourceItems(
 
   const items: SourceItem[] = [];
   records.forEach((record, index) => {
-    const { item, error } = toSourceItem(record, index, defaultSourceId);
+    const { item, error, warnings: itemWarnings } = toSourceItem(record, index, defaultSourceId);
     if (item) items.push(item);
     if (error) errors.push(error);
+    if (itemWarnings) warnings.push(...itemWarnings);
   });
-  return { items, errors };
+  return { items, errors, warnings };
 }

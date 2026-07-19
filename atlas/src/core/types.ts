@@ -9,11 +9,27 @@ export interface SourceItem {
   /** Stable identifier within the source, used for deduplication. */
   externalId: string;
   title: string;
+  /** Full text when available. Falls back to originalQuote/summary on import. */
   content: string;
+  /**
+   * Short verbatim quote from the poster (target 25-300 chars, minimal
+   * necessary excerpt). Analysis prefers this over content/summary.
+   */
+  originalQuote?: string;
+  /** Paraphrased summary, used for report display — never for analysis. */
+  summary?: string;
   url?: string;
   publishedAt?: string; // ISO 8601
   /** Arbitrary source-specific attributes. */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * The text analyzers should reason over: the poster's own words when we
+ * have them, otherwise the collected content.
+ */
+export function documentAnalysisText(item: Pick<SourceItem, 'content' | 'originalQuote'>): string {
+  return item.originalQuote && item.originalQuote.trim() ? item.originalQuote.trim() : item.content;
 }
 
 /** A source item after it has been persisted. */

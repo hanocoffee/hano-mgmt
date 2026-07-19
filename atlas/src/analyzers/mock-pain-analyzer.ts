@@ -6,6 +6,7 @@ import type {
   ScoreDimension,
   StoredDocument,
 } from '../core/types.js';
+import { documentAnalysisText } from '../core/types.js';
 import { normalizeClusterKey } from '../core/scoring.js';
 
 function sentences(text: string): string[] {
@@ -15,35 +16,74 @@ function sentences(text: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+/** A sentence expressing a distinct problem becomes its own pain point. */
+const PAIN_SIGNAL =
+  /struggle|hate|waste|spend|hours|lose|lost|miss|missed|cannot|can't|difficult|hard|overwhelm|behind|late|unpaid|ghost|awkward|tired|stress|complex|break|unreliable|risky|fear|creep|no-show|困|つらい|大変|時間|失/i;
+
 /**
- * Deterministic offline extractor: turns each non-empty document into one
- * pain point with verbatim sentence evidence. Used for tests and dry runs.
+ * Shared cluster taxonomy so pain points describing the same underlying
+ * problem land in the same cluster across documents. First match wins.
+ */
+const CLUSTER_TAXONOMY: [string, RegExp][] = [
+  ['invoice-payment-collection', /invoic|payment|paid|unpaid|pay |chas|billing|deposit|overdue|cash flow|請求|入金|支払/i],
+  ['scope-contract-management', /scope|contract|revision|proposal|quote|agreement|creep|deliverable|見積|契約|修正/i],
+  ['booking-scheduling', /booking|appointment|no-show|schedul|calendar|shift|availability|turnover|予約|シフト/i],
+  ['client-communication-response', /call|dm|message|inquir|respond|reply|after-hours|answer|lead|問い合わせ|電話|返信/i],
+  ['social-media-content', /social|post|instagram|facebook|tiktok|content|platform|engagement|trend|SNS|投稿/i],
+  ['tool-fragmentation', /tools|software|spreadsheet|excel|sheets|switching|separate|quickbooks|manual data|手作業|転記/i],
+  ['delegation-team-visibility', /delegat|staff|employee|team|ownership|visibility|cc |communicat|外注|委任/i],
+];
+
+function categorize(text: string, fallbackTitle: string): string {
+  for (const [key, pattern] of CLUSTER_TAXONOMY) {
+    if (pattern.test(text)) return key;
+  }
+  return normalizeClusterKey(fallbackTitle.split(/\s+/).slice(0, 4).join('-') || 'uncategorized');
+}
+
+/**
+ * Deterministic offline extractor (v2): analyzes the poster's own words
+ * (originalQuote when present) and extracts up to 3 pain points — one per
+ * sentence expressing a distinct problem — with verbatim sentence evidence
+ * and taxonomy-based cluster keys shared across documents.
  */
 export class MockPainExtractor implements PainPointExtractor {
   readonly id = 'mock';
-  readonly version = '1';
-  readonly promptVersion = 'mock-extract@1';
+  readonly version = '2';
+  readonly promptVersion = 'mock-extract@2';
 
   async extract(document: StoredDocument): Promise<ExtractedPainPoint[]> {
-    const parts = sentences(document.content);
+    const text = documentAnalysisText(document);
+    const parts = sentences(text);
     if (parts.length === 0) return [];
-    const workaround = parts.find((s) => /manual|spreadsheet|by hand|手作業|手動/i.test(s));
-    return [
-      {
-        problemStatement: document.title,
-        targetUser: this.guessTargetUser(document),
-        context: parts[0] ?? document.title,
-        currentWorkaround: workaround ?? '不明',
-        desiredOutcome: `Solve: ${document.title}`,
-        clusterKey: normalizeClusterKey(
-          document.title.split(/\s+/).slice(0, 4).join('-') || 'uncategorized',
-        ),
-        evidence: parts.slice(0, 2).map((text) => ({ evidenceText: text, evidenceType: 'quote' })),
-      },
-    ];
+
+    const painSentences = parts.filter((sentence) => PAIN_SIGNAL.test(sentence)).slice(0, 3);
+    const workaround = parts.find((s) => /manual|spreadsheet|by hand|workaround|手作業|手動/i.test(s));
+    const targetUser = this.guessTargetUser(document);
+
+    const toPain = (statement: string, evidenceSentences: string[]): ExtractedPainPoint => ({
+      problemStatement: statement.length > 140 ? `${statement.slice(0, 137)}...` : statement,
+      targetUser,
+      context: document.title,
+      currentWorkaround: workaround ?? '不明',
+      desiredOutcome: `Solve: ${document.title}`,
+      clusterKey: categorize(`${statement} ${document.title}`, document.title),
+      evidence: evidenceSentences
+        .slice(0, 2)
+        .map((evidenceText) => ({ evidenceText, evidenceType: 'quote' })),
+    });
+
+    if (painSentences.length === 0) {
+      return [toPain(document.title, parts)];
+    }
+    return painSentences.map((sentence) => toPain(sentence, [sentence]));
   }
 
   private guessTargetUser(document: StoredDocument): string {
+    const segment = document.metadata?.targetSegment;
+    if (typeof segment === 'string' && segment) {
+      return `${segment} segment`;
+    }
     const tags = document.metadata?.tags;
     if (Array.isArray(tags) && typeof tags[0] === 'string') {
       return `${tags[0]} segment`;

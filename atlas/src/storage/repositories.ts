@@ -7,6 +7,8 @@ interface DocumentRow {
   external_id: string;
   title: string;
   content: string;
+  original_quote: string | null;
+  summary: string | null;
   url: string | null;
   published_at: string | null;
   metadata: string | null;
@@ -31,6 +33,8 @@ function rowToDocument(row: DocumentRow): StoredDocument {
     externalId: row.external_id,
     title: row.title,
     content: row.content,
+    originalQuote: row.original_quote ?? undefined,
+    summary: row.summary ?? undefined,
     url: row.url ?? undefined,
     publishedAt: row.published_at ?? undefined,
     metadata: row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : undefined,
@@ -62,11 +66,13 @@ export class DocumentRepository {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        `INSERT INTO documents (source_id, external_id, title, content, url, published_at, metadata, collected_at)
-         VALUES (@sourceId, @externalId, @title, @content, @url, @publishedAt, @metadata, @collectedAt)
+        `INSERT INTO documents (source_id, external_id, title, content, original_quote, summary, url, published_at, metadata, collected_at)
+         VALUES (@sourceId, @externalId, @title, @content, @originalQuote, @summary, @url, @publishedAt, @metadata, @collectedAt)
          ON CONFLICT (source_id, external_id) DO UPDATE SET
            title = excluded.title,
            content = excluded.content,
+           original_quote = excluded.original_quote,
+           summary = excluded.summary,
            url = excluded.url,
            published_at = excluded.published_at,
            metadata = excluded.metadata,
@@ -77,6 +83,8 @@ export class DocumentRepository {
         externalId: item.externalId,
         title: item.title,
         content: item.content,
+        originalQuote: item.originalQuote ?? null,
+        summary: item.summary ?? null,
         url: item.url ?? null,
         publishedAt: item.publishedAt ?? null,
         metadata: item.metadata ? JSON.stringify(item.metadata) : null,
